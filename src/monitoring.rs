@@ -5,7 +5,6 @@
 
 use crate::{
     config::MonitoringConfig,
-    error::Result,
     types::{Request, Response},
 };
 use serde::{Deserialize, Serialize};

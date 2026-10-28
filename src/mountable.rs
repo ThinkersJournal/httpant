@@ -10,7 +10,7 @@ use crate::types::{HttpMethod, Request, Response};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// A boxed future that returns a Result<Response>
+/// A boxed future that returns a `Result<Response>`
 pub type BoxFuture<T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'static>>;
 
 /// An authenticated route that includes both the route and authentication middleware

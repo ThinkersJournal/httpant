@@ -204,6 +204,10 @@ pub extern "C" fn ws_create_server() -> c_int {
 
 /// Bind server to an address
 /// Returns FFI_SUCCESS on success, negative value on error
+///
+/// # Safety
+///
+/// `address` must be a valid, NUL-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ws_bind_server(server_id: c_int, address: *const c_char) -> c_int {
     let mut context = get_ffi_context();
@@ -233,6 +237,10 @@ pub unsafe extern "C" fn ws_bind_server(server_id: c_int, address: *const c_char
 
 /// Add a route to the server
 /// Returns FFI_SUCCESS on success, negative value on error
+///
+/// # Safety
+///
+/// Every pointer argument must be a valid, NUL-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ws_add_route(
     server_id: c_int,
@@ -365,6 +373,10 @@ pub extern "C" fn ws_get_last_error() -> *mut c_char {
 }
 
 /// Free a string allocated by the FFI
+///
+/// # Safety
+///
+/// `s` must be null or a pointer returned by this library that has not been freed.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ws_free_string(s: *mut c_char) {
     if !s.is_null() {
@@ -419,6 +431,10 @@ pub extern "C" fn ws_create_nodejs_server(
 }
 
 /// Go bindings helper - create server with Go-style error handling
+///
+/// # Safety
+///
+/// `error_out` must be null or point to writable memory for one pointer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ws_create_go_server(error_out: *mut *mut c_char) -> c_int {
     let server_id = ws_create_server();

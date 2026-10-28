@@ -53,7 +53,7 @@ impl Default for AppState {
     }
 }
 
-/// A better approach for shared state using Arc<T> directly
+/// A better approach for shared state using `Arc<T>` directly
 #[derive(Clone, Debug)]
 pub struct SharedState<T> {
     inner: Arc<RwLock<T>>,

@@ -12,7 +12,7 @@
 
 use crate::config::SecurityConfig;
 use crate::core::{Middleware, Next};
-use crate::error::{Result, WebServerError};
+use crate::error::Result;
 use crate::types::{Request, Response};
 use async_trait::async_trait;
 use sha1::{Digest, Sha1};
@@ -85,12 +85,11 @@ impl SecurityContext {
         }
 
         // Validate request size
-        if let Some(content_length) = request.headers.get("content-length") {
-            if let Ok(size) = content_length.parse::<usize>() {
-                if size > MAX_REQUEST_SIZE {
-                    issues.push(SecurityIssue::RequestTooLarge(size));
-                }
-            }
+        if let Some(content_length) = request.headers.get("content-length")
+            && let Ok(size) = content_length.parse::<usize>()
+            && size > MAX_REQUEST_SIZE
+        {
+            issues.push(SecurityIssue::RequestTooLarge(size));
         }
 
         // Check for SQL injection patterns
@@ -121,18 +120,18 @@ impl SecurityContext {
         }
 
         // Validate CSRF token if protection is enabled
-        if self.config.enable_csrf_protection {
-            if let Err(csrf_issue) = self.validate_csrf_token(request).await {
-                let event = SecurityEvent {
-                    timestamp: Instant::now(),
-                    event_type: SecurityEventType::CsrfTokenValidation,
-                    severity: SecuritySeverity::Medium,
-                    source_ip: client_ip.clone(),
-                    details: "CSRF token validation failed".to_string(),
-                };
-                self.security_monitor.log_event(event);
-                issues.push(csrf_issue);
-            }
+        if self.config.enable_csrf_protection
+            && let Err(csrf_issue) = self.validate_csrf_token(request).await
+        {
+            let event = SecurityEvent {
+                timestamp: Instant::now(),
+                event_type: SecurityEventType::CsrfTokenValidation,
+                severity: SecuritySeverity::Medium,
+                source_ip: client_ip.clone(),
+                details: "CSRF token validation failed".to_string(),
+            };
+            self.security_monitor.log_event(event);
+            issues.push(csrf_issue);
         }
 
         // Check for replay attacks
@@ -149,10 +148,10 @@ impl SecurityContext {
     /// Extract client IP from request
     fn extract_client_ip(&self, request: &Request) -> String {
         // Check X-Forwarded-For header first (for proxies)
-        if let Some(forwarded) = request.headers.get("x-forwarded-for") {
-            if let Some(ip) = forwarded.split(',').next() {
-                return ip.trim().to_string();
-            }
+        if let Some(forwarded) = request.headers.get("x-forwarded-for")
+            && let Some(ip) = forwarded.split(',').next()
+        {
+            return ip.trim().to_string();
         }
 
         // Check X-Real-IP header
@@ -238,10 +237,10 @@ impl SecurityContext {
         let mut signatures = self.request_signatures.lock().unwrap();
 
         // Check if we've seen this exact request recently
-        if let Some(existing) = signatures.get(&signature) {
-            if existing.timestamp.elapsed() < Duration::from_secs(5 * 60) {
-                return Err(SecurityIssue::ReplayAttack);
-            }
+        if let Some(existing) = signatures.get(&signature)
+            && existing.timestamp.elapsed() < Duration::from_secs(5 * 60)
+        {
+            return Err(SecurityIssue::ReplayAttack);
         }
 
         // Store signature
