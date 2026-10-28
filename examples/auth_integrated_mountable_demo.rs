@@ -13,8 +13,8 @@
 
 use std::sync::Arc;
 use web_server_abstraction::{
-    auth::{AuthContext, AuthContextConfig, AuthRequirements},
     HttpMethod, InterfaceRegistry, MountableInterface, Request, Response, Result,
+    auth::{AuthContext, AuthContextConfig, AuthRequirements},
 };
 
 // =====================================================
@@ -604,10 +604,12 @@ mod tests {
         // Users list should require auth
         let users_route = routes_def.iter().find(|r| r.path == "/users").unwrap();
         assert!(users_route.auth_requirements.required);
-        assert!(users_route
-            .auth_requirements
-            .permissions
-            .contains(&"user.read".to_string()));
+        assert!(
+            users_route
+                .auth_requirements
+                .permissions
+                .contains(&"user.read".to_string())
+        );
 
         // MFA setup should require auth
         let mfa_route = routes_def

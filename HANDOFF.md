@@ -31,4 +31,11 @@ time, red-first, version bump every PR (the package becomes `httpant`; PM alloca
 Patent sweep before any publish (HTTP middleware/routing are crowded fields): queries into `PATENT-SWEEP.md`, claim nothing clear.
 
 ## State
-main = old 1.0.2 content + this HANDOFF (1.0.3, docs only, not published). No open PRs or issues. No lane existed before this one.
+main = old 1.0.2 content + this HANDOFF (1.0.3, docs only, not published). Open: #1 survey, #2 CI. No lane existed before this one.
+
+## Dated exception: `cargo deny` is not required (PM 2026-10-28, owner: this lane, ends at the first code slice)
+The old tree depends on auth-framework 0.4.2 and sqlx 0.7 (RUSTSEC-2024-0363, paste, rustls-pemfile, unsafe-libyaml; option-ext MPL-2.0) and is being
+discarded, so `deny.toml` is NOT weakened and no work is spent fixing that tree. Protection requires fmt/clippy/build/test on ubuntu and windows, not deny.
+The exception ends at slice 1 (task 3): that PR replaces the dependency tree, deny must be green in it, and the PM then adds it as required.
+Versions (PM, final): #2 = 1.0.5, survey #1 rebased to 1.0.6, README known-issues PR 1.0.7.
+

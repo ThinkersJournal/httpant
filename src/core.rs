@@ -7,7 +7,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-/// A boxed future that returns a Result<Response>
+/// A boxed future that returns a `Result<Response>`
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 /// A handler function type that takes a request and returns a response
@@ -40,7 +40,7 @@ pub trait Handler<T>: Clone + Send + Sync + 'static {
     fn into_handler(self) -> HandlerFn;
 }
 
-/// Implementation for async functions that take a Request and return Result<Response>
+/// Implementation for async functions that take a Request and return `Result<Response>`
 impl<F, Fut> Handler<()> for F
 where
     F: Fn(Request) -> Fut + Clone + Send + Sync + 'static,

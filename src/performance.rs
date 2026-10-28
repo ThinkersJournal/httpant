@@ -5,7 +5,7 @@
 
 use crate::{
     core::HandlerFn,
-    types::{HttpMethod, Request, Response, StatusCode},
+    types::{HttpMethod, Request},
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -512,7 +512,6 @@ criterion_main!(criterion_benchmarks::benches);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::StatusCode;
 
     #[tokio::test]
     async fn test_latency_collector() {

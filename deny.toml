@@ -1,0 +1,35 @@
+# cargo-deny configuration (same shape as the portfolio's other Rust repositories).
+# Read the job log: an advisory acknowledgement is the PM's call at gate, never a config edit.
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+
+[licenses]
+version = 2
+# Allow list, read from `cargo deny list`: a new dependency whose licence expression cannot be
+# satisfied from these fails the job. Dual-licensed crates (jiff, r-efi, rustix, the objc2 family)
+# are satisfied by their MIT or Apache-2.0 arm; Unicode-3.0 is the ICU data and unicode-ident.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Unicode-3.0",
+    # The TLS/crypto stack under reqwest (ring, rustls-webpki, aws-lc-*): all permissive.
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "0BSD",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+# crates.io only: no git dependencies, no other registries.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

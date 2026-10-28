@@ -188,18 +188,18 @@ impl CrossPlatformTestRunner {
         while start_time.elapsed() < test_duration {
             let request_start = Instant::now();
 
-            if let Ok(_) = self.make_test_request(&server).await {
+            if self.make_test_request(&server).await.is_ok() {
                 successful_requests += 1;
                 total_latency += request_start.elapsed();
             }
         }
 
-        let actual_rps = successful_requests * 1000 / test_duration.as_millis() as u64;
-        let avg_latency_ms = if successful_requests > 0 {
-            total_latency.as_millis() as u64 / successful_requests
-        } else {
-            u64::MAX
-        };
+        let actual_rps = (successful_requests * 1000_u64)
+            .checked_div(test_duration.as_millis() as u64)
+            .unwrap_or(0);
+        let avg_latency_ms = (total_latency.as_millis() as u64)
+            .checked_div(successful_requests)
+            .unwrap_or(u64::MAX);
 
         if actual_rps >= min_rps && avg_latency_ms <= max_latency_ms {
             TestCaseResult::Passed
@@ -419,6 +419,7 @@ impl PlatformInfo {
         }
     }
 
+    #[allow(clippy::vec_init_then_push)] // each push is feature-gated
     fn detect_features() -> Vec<String> {
         let mut features = Vec::new();
 
@@ -747,7 +748,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_security_test_vectors() {
-        let test_vectors = vec![SecurityTestVector {
+        let test_vectors = [SecurityTestVector {
             description: "SQL injection test".to_string(),
             input: "'; DROP TABLE users; --".to_string(),
             expected_blocked: true,

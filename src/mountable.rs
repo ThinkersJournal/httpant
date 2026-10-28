@@ -3,14 +3,14 @@
 //! into any host application regardless of the underlying web framework.
 //! Now with deep authentication integration for seamless auth across all interfaces.
 
-use crate::auth::{auth_middleware, AuthContext, AuthRequirements};
+use crate::auth::{AuthContext, AuthRequirements, auth_middleware};
 use crate::core::{Handler, Route};
 use crate::error::Result;
 use crate::types::{HttpMethod, Request, Response};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// A boxed future that returns a Result<Response>
+/// A boxed future that returns a `Result<Response>`
 pub type BoxFuture<T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'static>>;
 
 /// An authenticated route that includes both the route and authentication middleware

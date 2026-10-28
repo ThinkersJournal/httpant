@@ -4,10 +4,10 @@ use crate::core::{HandlerFn, Middleware};
 use crate::error::{Result, WebServerError};
 use crate::types::{Body, Headers, HttpMethod, Request, Response, StatusCode};
 use axum::{
+    Router,
     http::{self, HeaderMap, Method, StatusCode as AxumStatusCode},
     response::IntoResponse,
-    routing::{delete, get, head, options, patch, post, put, MethodRouter},
-    Router,
+    routing::{MethodRouter, delete, get, head, options, patch, post, put},
 };
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::net::TcpListener;

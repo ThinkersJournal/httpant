@@ -7,7 +7,7 @@ use crate::{
     config::{CompressionConfig, CorsConfig, SecurityConfig},
     core::{Middleware, Next},
     error::{Result, WebServerError},
-    types::{Headers, Request, Response},
+    types::{Request, Response},
 };
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -276,10 +276,10 @@ impl RateLimitMiddleware {
     /// Get client IP from request
     fn get_client_ip(&self, request: &Request) -> String {
         // Try various headers for client IP
-        if let Some(forwarded) = request.headers.get("x-forwarded-for") {
-            if let Some(ip) = forwarded.split(',').next() {
-                return ip.trim().to_string();
-            }
+        if let Some(forwarded) = request.headers.get("x-forwarded-for")
+            && let Some(ip) = forwarded.split(',').next()
+        {
+            return ip.trim().to_string();
         }
 
         if let Some(real_ip) = request.headers.get("x-real-ip") {
@@ -463,7 +463,7 @@ impl Default for MiddlewareStack {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{HttpMethod, StatusCode};
+    use crate::types::{Headers, HttpMethod, StatusCode};
 
     #[tokio::test]
     async fn test_cors_middleware() {
