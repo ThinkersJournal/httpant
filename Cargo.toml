@@ -1,6 +1,6 @@
 [package]
 name = "web-server-abstraction"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2024"
 authors = ["Eric Evans <ciresnave@gmail.com>"]
 description = "An ergonomic abstraction layer over popular Rust web frameworks"
