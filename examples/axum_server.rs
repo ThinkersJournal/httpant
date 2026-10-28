@@ -1,6 +1,6 @@
 use web_server_abstraction::{
-    middleware::{CorsMiddleware, LoggingMiddleware},
     HttpMethod, Request, Response, StatusCode, WebServer,
+    middleware::{CorsMiddleware, LoggingMiddleware},
 };
 
 #[tokio::main]

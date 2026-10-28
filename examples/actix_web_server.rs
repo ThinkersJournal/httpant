@@ -4,8 +4,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "actix-web")]
     {
         use web_server_abstraction::{
-            middleware::{CorsMiddleware, LoggingMiddleware},
             HttpMethod, Response, StatusCode, WebServer,
+            middleware::{CorsMiddleware, LoggingMiddleware},
         };
         let server = WebServer::with_actix_web_adapter()
             // Add middleware
@@ -33,7 +33,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(not(feature = "actix-web"))]
     {
-        println!("Actix-Web feature not enabled. Run with: cargo run --example actix_web_server --features actix-web");
+        println!(
+            "Actix-Web feature not enabled. Run with: cargo run --example actix_web_server --features actix-web"
+        );
         println!("Note: Actix-Web adapter is currently in simplified implementation mode.");
     }
 

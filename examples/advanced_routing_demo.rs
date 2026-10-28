@@ -7,8 +7,8 @@
 //! - Convenience HTTP method functions
 
 use web_server_abstraction::{
-    types::{Request, Response, StatusCode},
     Result, WebServer,
+    types::{Request, Response, StatusCode},
 };
 
 #[tokio::main]
