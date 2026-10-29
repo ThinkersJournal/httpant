@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use httpant_core::{BoxFuture, LayerFn, Result, Router, apply_layers};
-use httpant_server::{HyperAdapter, RunningServer, ServeOptions, ServerAdapter};
+use httpant_server::{AxumAdapter, HyperAdapter, RunningServer, ServeOptions, ServerAdapter};
 
 use crate::mutants::{self, Mutant};
 
@@ -44,6 +44,14 @@ impl<A: ServerAdapter> Subject for AdapterSubject<A> {
 /// The reference subject: the hyper adapter.
 pub fn reference() -> AdapterSubject<HyperAdapter> {
     AdapterSubject(HyperAdapter)
+}
+
+/// Every adapter this build of HTTPAnt has, each wrapped as a subject: the list CI runs the whole suite over.
+pub fn adapters() -> Vec<Box<dyn Subject>> {
+    vec![
+        Box::new(AdapterSubject(HyperAdapter)),
+        Box::new(AdapterSubject(AxumAdapter)),
+    ]
 }
 
 /// A deliberately broken variant of the reference adapter. A case that passes on its mutant is itself a failing test.

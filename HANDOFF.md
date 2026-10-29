@@ -13,13 +13,13 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 ## State
 - Merged: CI (#2), survey (#1), README known-issues (#3), benchmarks + actix notes (#4), design (#5), CODEOWNERS + PATENT-SWEEP (#6).
 - Merged: slice 1a (#7, 0.1.0): `httpant-core` types, conformance skeleton, old src tree deleted; `cargo deny` is a required check.
-- **Slice 1b PR open** (branch `feat/server-hyper`, worktree `C:\Projects\httpant-wt-1b`, 0.1.1 placeholder): Router/Handler/layers in core, `httpant-server`
-  (Server, ServerAdapter, HyperAdapter), conformance cases 1-7 runnable with 9 mutants, hello example run in CI.
+- Merged: slice 1b (#8, 0.1.1): Router/Handler/layers, `httpant-server` (Server, ServerAdapter, HyperAdapter), conformance cases 1-7 with 9 mutants, hello example in CI.
+- **Slice 2a PR open** (branch `feat/axum-adapter`, worktree `C:\Projects\httpant-wt-axum`, 0.1.2 placeholder): axum adapter behind feature `axum`; cases 1-7 pass on hyper and axum.
 - **Option A (Tower core, thin adapters) is PROVISIONAL**: PM told me to proceed 2026-10-29 while CireSnave decides A/B/C. If he picks B or C, 1a is cheap to redo.
 - Trailing slash rule: no normalisation (decided, design section 3).
 
 ## Next (in order)
-1. Slice 2: axum adapter (implement `Subject` via `AdapterSubject`), cases 8-12 (streaming, shutdown, keep-alive, concurrency, HEAD), first capability matrix.
+1. Slice 2b: cases 8-12 (streaming, shutdown, keep-alive, concurrency, HEAD) on hyper and axum, first capability matrix (design section 8).
    Read ConfigurAnt's API before wiring settings (design section 10; not yet read, UNVERIFIED).
 2. Slice 3 client half (hyper-util adapter, client conformance, then the real nine-line hello with `Client`); then actix (see ACTIX notes), others only if they pass.
 3. Open design points: percent-decoding of path params (raw today), request header/body limits in `ServeOptions`, Path/Query extractors.

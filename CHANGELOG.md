@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-10-30
+
+- Slice 2a: axum adapter (`AxumAdapter`, feature `axum` of `httpant-server`, `Server::with_adapter("axum")`); axum 0.8 serves the one boxed service as its fallback, so routing and error mapping are HTTPAnt's. The conformance suite now runs cases 1-7 on every adapter (hyper and axum both pass). Not published.
+
 ## [0.1.1] - 2026-10-29
 
 - Slice 1b (provisional option A): `httpant-core` gains `Router` (`:name`/`*rest`, exact-method matching, 405 with `Allow`, no path normalisation), the `Handler` trait, Tower layer helpers; `BoxService` is now cloneable. New `httpant-server` with `Server`, the `ServerAdapter` trait and the hyper reference adapter. `httpant-conformance` now runs cases 1-7 over real sockets, each with known-bad mutants that it must fail on (9 mutants). The hello-world example runs in CI and escapes control characters in anything it prints from the network (CodeQL log injection), with a test. Not published.

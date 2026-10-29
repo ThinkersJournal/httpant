@@ -7,12 +7,17 @@ license.workspace = true
 repository.workspace = true
 description = "HTTPAnt server half: the Server builder, the ServerAdapter trait and the hyper reference adapter"
 
+[features]
+# Adapters other than the hyper reference are opt-in: a user pays only for the framework they pick.
+axum = ["dep:axum"]
+
 [dependencies]
 httpant-core.workspace = true
 hyper = { workspace = true, features = ["server", "http1"] }
 hyper-util = { workspace = true, features = ["tokio"] }
 tokio = { workspace = true, features = ["net", "rt", "sync", "macros"] }
 tower.workspace = true
+axum = { workspace = true, optional = true, features = ["tokio", "http1"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }

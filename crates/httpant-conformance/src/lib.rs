@@ -18,7 +18,7 @@ mod subject;
 use httpant_core::BoxFuture;
 
 pub use mutants::Mutant;
-pub use subject::{AdapterSubject, App, MutantSubject, Subject, reference};
+pub use subject::{AdapterSubject, App, MutantSubject, Subject, adapters, reference};
 
 /// One conformance case and the broken variants it must be shown able to fail on.
 #[derive(Clone, Copy)]
@@ -203,10 +203,14 @@ mod tests {
     case_test!(case_7_path_rule, 6);
 
     #[tokio::test]
-    async fn the_whole_suite_passes_on_the_hyper_adapter() {
-        let results = run_suite(&reference()).await;
-        assert_eq!(results.len(), CASES.len());
-        let failed: Vec<_> = results.iter().filter(|(_, r)| r.is_err()).collect();
-        assert!(failed.is_empty(), "{failed:?}");
+    async fn the_whole_suite_passes_on_every_adapter() {
+        let all = adapters();
+        assert!(all.len() >= 2, "expected hyper and axum, got {}", all.len());
+        for subject in &all {
+            let results = run_suite(subject.as_ref()).await;
+            assert_eq!(results.len(), CASES.len());
+            let failed: Vec<_> = results.iter().filter(|(_, r)| r.is_err()).collect();
+            assert!(failed.is_empty(), "{}: {failed:?}", subject.name());
+        }
     }
 }

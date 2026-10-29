@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 httpant-core.workspace = true
-httpant-server.workspace = true
+httpant-server = { workspace = true, features = ["axum"] }
 tower.workspace = true
 tokio = { workspace = true, features = ["net", "io-util", "time", "rt"] }
 
