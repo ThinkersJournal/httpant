@@ -16,3 +16,8 @@ tower.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }
+
+# Examples are built and run in CI; `test = true` also runs the unit tests inside them.
+[[example]]
+name = "hello"
+test = true
