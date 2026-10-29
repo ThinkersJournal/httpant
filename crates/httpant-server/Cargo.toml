@@ -1,0 +1,18 @@
+[package]
+name = "httpant-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "HTTPAnt server half: the Server builder, the ServerAdapter trait and the hyper reference adapter"
+
+[dependencies]
+httpant-core.workspace = true
+hyper = { workspace = true, features = ["server", "http1"] }
+hyper-util = { workspace = true, features = ["tokio"] }
+tokio = { workspace = true, features = ["net", "rt", "sync", "macros"] }
+tower.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }

@@ -5,11 +5,14 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "HTTPAnt adapter conformance suite (skeleton): case registry and an independent raw-TCP HTTP/1.1 client"
+description = "HTTPAnt adapter conformance suite: cases run over real sockets, each with known-bad mutants, and an independent raw-TCP HTTP/1.1 client"
 publish = false
 
 [dependencies]
-tokio = { workspace = true, features = ["net", "io-util", "time"] }
+httpant-core.workspace = true
+httpant-server.workspace = true
+tower.workspace = true
+tokio = { workspace = true, features = ["net", "io-util", "time", "rt"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "net", "io-util", "time"] }

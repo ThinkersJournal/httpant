@@ -222,6 +222,9 @@ old types are the defects. A shim would reintroduce them. Unverified: who depend
 ## 12. Slices
 
 1. **Core + conformance harness + hyper reference adapter + the nine-line example in CI.** Mutants 1-7. `cargo deny` becomes required here (HANDOFF exception ends).
+   Built in 1b as: `BoxService` is a `BoxCloneService` (an adapter clones it per connection); `httpant-conformance` depends on core and server (a `Subject` starts
+   an `App` on an adapter; mutants are wrappers around the service); an oversize body is tested by declaring 10 MiB and sending 16 KiB, because a server that refuses
+   early and closes with unread data resets the connection on Windows and can destroy the 413 (observed, os error 10053).
    PM 2026-10-29 split it: **1a** (done in the first code PR) = core types + conformance skeleton (case registry, raw-TCP client), provisionally on option A; **1b** = router/handler, hyper reference adapter, the runnable cases 1-7 with their mutants, and the example in CI. The old source tree was removed in 1a, so `cargo deny` is green from 1a.
 2. **axum adapter**, then cases 8-12 for both; first capability matrix.
 3. **Client half** with hyper-util adapter and client conformance.

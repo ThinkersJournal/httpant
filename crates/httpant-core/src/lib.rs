@@ -1,13 +1,16 @@
 //! HTTPAnt core types (design: `docs/HTTPANT-DESIGN.md`, sections 1-3).
 //!
 //! The request, response, method, status, header and URI types are the [`http`] crate's, re-exported unchanged, so the information the old
-//! `web-server-abstraction` adapters lost at the framework boundary has no way to be lost here. This slice holds the types only: no router,
-//! handler trait or adapter yet.
+//! `web-server-abstraction` adapters lost at the framework boundary has no way to be lost here. On top of the types: a [`Router`] with
+//! `:name` / `*rest` paths and exact-method matching, a [`Handler`] trait, and Tower layers ([`layer_fn`]). Adapters live in `httpant-server`.
 
 mod body;
 mod capabilities;
 mod error;
+mod handler;
+mod layer;
 mod response;
+mod router;
 
 pub use bytes::Bytes;
 pub use http;
@@ -15,14 +18,20 @@ pub use http;
 pub use body::{Body, BoxError};
 pub use capabilities::{Capabilities, DEFAULT_BODY_LIMIT, Support};
 pub use error::{Error, Result};
+pub use handler::Handler;
+pub use layer::{LayerFn, apply_layers, layer_fn};
 pub use response::IntoResponse;
+pub use router::{PathParams, Router};
+
+/// A boxed, sendable future.
+pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
 
 /// A request as every adapter hands it to the service: `http::Request` over the streaming [`Body`].
 pub type Request = http::Request<Body>;
 /// A response as the service returns it.
 pub type Response = http::Response<Body>;
-/// The one contract an adapter runs (design section 3): the whole router and its middleware compiled to a single boxed Tower service.
-pub type BoxService = tower::util::BoxService<Request, Response, std::convert::Infallible>;
+/// The one contract an adapter runs (design section 3): the whole router and its middleware compiled to a single boxed, cloneable Tower service (an adapter clones it per connection).
+pub type BoxService = tower::util::BoxCloneService<Request, Response, std::convert::Infallible>;
 
 #[cfg(test)]
 mod tests {

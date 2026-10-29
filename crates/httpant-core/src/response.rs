@@ -158,6 +158,11 @@ mod tests {
             Error::AdapterNotCompiledIn {
                 id: "rocket".into(),
             },
+            Error::Io(std::io::Error::other("x")),
+            Error::UnknownAdapter {
+                id: "x".into(),
+                available: vec!["hyper"],
+            },
         ];
         for e in all {
             assert!(
