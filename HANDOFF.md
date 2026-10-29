@@ -12,16 +12,17 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 
 ## State
 - Merged: CI (#2), survey (#1), README known-issues (#3), benchmarks + actix notes (#4), design (#5), CODEOWNERS + PATENT-SWEEP (#6).
-- **Slice 1a PR open** (branch `feat/core-conformance`, worktree `C:\Projects\httpant-wt-slice1`): workspace; `httpant-core` (Body with explicit limits,
-  Error, IntoResponse, Capabilities, BoxService); `httpant-conformance` skeleton (cases 1-7 registry, raw-TCP client). Old src tree deleted. `cargo deny` green.
+- Merged: slice 1a (#7, 0.1.0): `httpant-core` types, conformance skeleton, old src tree deleted; `cargo deny` is a required check.
+- **Slice 1b PR open** (branch `feat/server-hyper`, worktree `C:\Projects\httpant-wt-1b`, 0.1.1 placeholder): Router/Handler/layers in core, `httpant-server`
+  (Server, ServerAdapter, HyperAdapter), conformance cases 1-7 runnable with 9 mutants, hello example run in CI.
 - **Option A (Tower core, thin adapters) is PROVISIONAL**: PM told me to proceed 2026-10-29 while CireSnave decides A/B/C. If he picks B or C, 1a is cheap to redo.
 - Trailing slash rule: no normalisation (decided, design section 3).
 
 ## Next (in order)
-1. Slice 1b: router + handler trait (`Send + 'static`), hyper reference adapter, make cases 1-7 runnable over real sockets, each red-first with its mutant,
-   the nine-line example as a CI test. Read ConfigurAnt's API first (design section 10; not yet read, UNVERIFIED).
-2. Slice 2 axum adapter + cases 8-12; slice 3 client half; then actix (see ACTIX notes), others only if they pass.
-3. After `cargo deny` is green on main, the PM adds it as a required check (the dated exception from #2 ended with slice 1a).
+1. Slice 2: axum adapter (implement `Subject` via `AdapterSubject`), cases 8-12 (streaming, shutdown, keep-alive, concurrency, HEAD), first capability matrix.
+   Read ConfigurAnt's API before wiring settings (design section 10; not yet read, UNVERIFIED).
+2. Slice 3 client half (hyper-util adapter, client conformance, then the real nine-line hello with `Client`); then actix (see ACTIX notes), others only if they pass.
+3. Open design points: percent-decoding of path params (raw today), request header/body limits in `ServeOptions`, Path/Query extractors.
 
 ## Standing constraints
 - `CARGO_BUILD_JOBS=2`, one build at a time. Primary checkout stays on `main`; every branch in `C:\Projects\httpant-wt-<topic>`.

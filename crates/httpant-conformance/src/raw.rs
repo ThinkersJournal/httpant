@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! A minimal HTTP/1.1 client over a bare TCP socket, for the conformance suite only.
 //!
 //! It writes exactly the bytes it is given and reports exactly the bytes it receives (header names and values are byte strings, repeated
@@ -7,7 +8,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 /// How long [`send`] waits for a whole response before failing, so a hung server fails a test instead of hanging it.
@@ -116,9 +117,17 @@ pub async fn send_with_timeout(
 ) -> io::Result<RawResponse> {
     let head_only = request.method.eq_ignore_ascii_case(b"HEAD");
     tokio::time::timeout(timeout, async {
-        let mut stream = TcpStream::connect(addr).await?;
-        stream.write_all(&request.to_bytes()).await?;
-        read_response(&mut stream, head_only).await
+        let (mut read, mut write) = TcpStream::connect(addr).await?.into_split();
+        // Written concurrently with the read, and a write error ignored: a server may answer (413) and close before it has read a large
+        // body, and the answer is what the test is about.
+        let bytes = request.to_bytes();
+        let writer = tokio::spawn(async move {
+            let _ = write.write_all(&bytes).await;
+            write
+        });
+        let res = read_response(&mut read, head_only).await;
+        writer.abort();
+        res
     })
     .await
     .map_err(|_| {
@@ -133,13 +142,13 @@ fn bad(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg.to_owned())
 }
 
-struct Reader<'a> {
-    stream: &'a mut TcpStream,
+struct Reader<'a, S> {
+    stream: &'a mut S,
     buf: Vec<u8>,
     eof: bool,
 }
 
-impl Reader<'_> {
+impl<S: AsyncRead + Unpin> Reader<'_, S> {
     async fn fill(&mut self) -> io::Result<()> {
         let mut chunk = [0u8; 8192];
         let n = self.stream.read(&mut chunk).await?;
@@ -210,7 +219,10 @@ fn trim(mut v: &[u8]) -> &[u8] {
     v
 }
 
-async fn read_response(stream: &mut TcpStream, head_request: bool) -> io::Result<RawResponse> {
+async fn read_response<S: AsyncRead + Unpin>(
+    stream: &mut S,
+    head_request: bool,
+) -> io::Result<RawResponse> {
     let mut r = Reader {
         stream,
         buf: Vec::new(),

@@ -1,10 +1,10 @@
 [workspace]
 resolver = "3"
-members = ["crates/httpant-core", "crates/httpant-conformance"]
+members = ["crates/httpant-core", "crates/httpant-server", "crates/httpant-conformance"]
 
 [workspace.package]
 # One number for every crate in the project (portfolio rule). 0.1.0: a new line, not a continuation of web-server-abstraction 1.0.x.
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["Eric Evans <ciresnave@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -15,6 +15,10 @@ bytes = "1"
 http = "1"
 http-body = "1"
 http-body-util = "0.1"
+hyper = { version = "1", default-features = false }
+hyper-util = { version = "0.1", default-features = false }
+httpant-core = { path = "crates/httpant-core", version = "0.1.0" }
+httpant-server = { path = "crates/httpant-server", version = "0.1.0" }
 thiserror = "2"
 tokio = "1"
 tower = { version = "0.5", default-features = false, features = ["util"] }

@@ -1,4 +1,4 @@
-# Patent sweep: HTTPAnt (web-server-abstraction line 1.0.x) @ not yet performed
+# Patent sweep: HTTPAnt (httpant-* line 0.1.x; formerly web-server-abstraction 1.0.x) @ not yet performed
 
 Date: -; Run by: -; Method: -. **NOT YET PERFORMED.** This file exists so the record has a home; it covers no version and clears nothing.
 No release or publish of HTTPAnt (`httpant`, `httpant-core`, `httpant-server`, `httpant-client`) or of a new `web-server-abstraction`

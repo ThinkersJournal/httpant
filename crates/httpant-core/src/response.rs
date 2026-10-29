@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use bytes::Bytes;
 use http::StatusCode;
 use http::header::{CONTENT_TYPE, HeaderValue};
@@ -157,6 +158,11 @@ mod tests {
             Error::NotUtf8,
             Error::AdapterNotCompiledIn {
                 id: "rocket".into(),
+            },
+            Error::Io(std::io::Error::other("x")),
+            Error::UnknownAdapter {
+                id: "x".into(),
+                available: vec!["hyper"],
             },
         ];
         for e in all {

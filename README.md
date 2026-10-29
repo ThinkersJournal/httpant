@@ -22,8 +22,10 @@ The old `web-server-abstraction` source was removed from `main` in the first HTT
 crates.io). What is here now:
 
 - `crates/httpant-core`: the `http` crate's request/response types, a streaming `Body` with explicit size limits, `Error`, `IntoResponse`,
-  `Capabilities`, and the boxed Tower service type adapters will run. Types only: no router, handler trait or adapter yet.
-- `crates/httpant-conformance`: skeleton of the adapter conformance suite (case registry and an independent raw-TCP HTTP/1.1 client). No case runs yet.
+  `Capabilities`, a `Router` and `Handler`, and the boxed Tower service type adapters run.
+- `crates/httpant-server`: the `Server` builder, the `ServerAdapter` trait and the hyper reference adapter (`cargo run --example hello -p httpant-server`).
+- `crates/httpant-conformance`: conformance cases 1-7 over real sockets against an independent raw-TCP HTTP/1.1 client, each with known-bad mutants it must fail on.
+  Cases 8-12, the client half and other adapters are not built.
 - `docs/HTTPANT-DESIGN.md`: the design, including the nine-line hello-world the first adapter must make true.
 
 Nothing is published. The design option (A, Tower core with thin adapters) is **provisional** until CireSnave decides.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use http::StatusCode;
 
 use crate::BoxError;
@@ -21,6 +22,17 @@ pub enum Error {
     /// A body was read as text but is not UTF-8.
     #[error("body is not valid UTF-8: read it as bytes instead")]
     NotUtf8,
+    /// Binding or serving failed at the operating-system level.
+    #[error("i/o error: {0}; check that the address is free and permitted")]
+    Io(#[from] std::io::Error),
+    /// An adapter id that no adapter has.
+    #[error("unknown adapter `{id}`: use one of {available:?}")]
+    UnknownAdapter {
+        /// The id that was requested.
+        id: String,
+        /// The ids that exist in this build.
+        available: Vec<&'static str>,
+    },
     /// An adapter was asked for by id but is not compiled in.
     #[error("adapter `{id}` is not compiled in: enable the `{id}` feature")]
     AdapterNotCompiledIn {
@@ -35,7 +47,9 @@ impl Error {
         match self {
             Error::BodyTooLarge { .. } => StatusCode::PAYLOAD_TOO_LARGE,
             Error::Body(_) | Error::NotUtf8 => StatusCode::BAD_REQUEST,
-            Error::AdapterNotCompiledIn { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::AdapterNotCompiledIn { .. } | Error::Io(_) | Error::UnknownAdapter { .. } => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         }
     }
 }
