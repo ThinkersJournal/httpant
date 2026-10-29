@@ -41,7 +41,7 @@ jobs:
       - name: cargo test
         run: cargo test --locked --no-fail-fast
 
-      - name: hello-world example (design: compiled and run in CI)
+      - name: hello-world example, run in CI
         run: cargo run --locked --example hello -p httpant-server
 
       - name: cargo doc
