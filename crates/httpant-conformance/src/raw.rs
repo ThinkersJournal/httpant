@@ -142,13 +142,13 @@ fn bad(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg.to_owned())
 }
 
-struct Reader<'a, S> {
-    stream: &'a mut S,
+struct Reader<S> {
+    stream: S,
     buf: Vec<u8>,
     eof: bool,
 }
 
-impl<S: AsyncRead + Unpin> Reader<'_, S> {
+impl<S: AsyncRead + Unpin> Reader<S> {
     async fn fill(&mut self) -> io::Result<()> {
         let mut chunk = [0u8; 8192];
         let n = self.stream.read(&mut chunk).await?;
@@ -193,6 +193,59 @@ impl<S: AsyncRead + Unpin> Reader<'_, S> {
         Ok(self.buf.drain(..n).collect())
     }
 
+    /// The status line and header lines, with an empty body.
+    async fn head(&mut self) -> io::Result<RawResponse> {
+        let status_line = self.line().await?;
+        let mut parts = status_line.splitn(3, |&b| b == b' ');
+        let version = parts.next().unwrap_or_default();
+        if !version.starts_with(b"HTTP/1.") {
+            return Err(bad("status line does not start with HTTP/1."));
+        }
+        let status: u16 = std::str::from_utf8(parts.next().unwrap_or_default())
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| bad("status code is not a number"))?;
+        let reason = parts.next().unwrap_or_default().to_vec();
+
+        let mut headers = Vec::new();
+        loop {
+            let line = self.line().await?;
+            if line.is_empty() {
+                break;
+            }
+            let colon = line
+                .iter()
+                .position(|&b| b == b':')
+                .ok_or_else(|| bad("header line without a colon"))?;
+            headers.push((line[..colon].to_vec(), trim(&line[colon + 1..]).to_vec()));
+        }
+        Ok(RawResponse {
+            status,
+            reason,
+            headers,
+            body: Vec::new(),
+        })
+    }
+
+    /// One chunk of a chunked body; `None` after the last chunk (its trailers are consumed).
+    async fn chunk(&mut self) -> io::Result<Option<Vec<u8>>> {
+        let size_line = self.line().await?;
+        let size_text = size_line.split(|&b| b == b';').next().unwrap_or_default();
+        let size = std::str::from_utf8(trim(size_text))
+            .ok()
+            .and_then(|s| usize::from_str_radix(s, 16).ok())
+            .ok_or_else(|| bad("chunk size is not hex"))?;
+        if size == 0 {
+            while !self.line().await?.is_empty() {} // trailers
+            return Ok(None);
+        }
+        let data = self.exact(size).await?;
+        if !self.line().await?.is_empty() {
+            return Err(bad("chunk not followed by CRLF"));
+        }
+        Ok(Some(data))
+    }
+
     async fn read_to_close(&mut self) -> io::Result<Vec<u8>> {
         while !self.eof {
             self.fill().await?;
@@ -219,6 +272,43 @@ fn trim(mut v: &[u8]) -> &[u8] {
     v
 }
 
+fn is_chunked(res: &RawResponse) -> bool {
+    res.header_values("transfer-encoding")
+        .iter()
+        .any(|v| v.to_ascii_lowercase().windows(7).any(|w| w == b"chunked"))
+}
+
+fn has_no_body(res: &RawResponse, head_request: bool) -> bool {
+    head_request || (100..200).contains(&res.status) || res.status == 204 || res.status == 304
+}
+
+impl<S: AsyncRead + Unpin> Reader<S> {
+    /// The rest of a response whose head has been read.
+    async fn finish(
+        &mut self,
+        mut res: RawResponse,
+        head_request: bool,
+    ) -> io::Result<RawResponse> {
+        if has_no_body(&res, head_request) {
+            return Ok(res);
+        }
+        if is_chunked(&res) {
+            while let Some(data) = self.chunk().await? {
+                res.body.extend(data);
+            }
+        } else if let Some(len) = res.header_values("content-length").first() {
+            let n: usize = std::str::from_utf8(len)
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .ok_or_else(|| bad("Content-Length is not a number"))?;
+            res.body = self.exact(n).await?;
+        } else {
+            res.body = self.read_to_close().await?;
+        }
+        Ok(res)
+    }
+}
+
 async fn read_response<S: AsyncRead + Unpin>(
     stream: &mut S,
     head_request: bool,
@@ -228,74 +318,108 @@ async fn read_response<S: AsyncRead + Unpin>(
         buf: Vec::new(),
         eof: false,
     };
+    let head = r.head().await?;
+    r.finish(head, head_request).await
+}
 
-    let status_line = r.line().await?;
-    let mut parts = status_line.splitn(3, |&b| b == b' ');
-    let version = parts.next().unwrap_or_default();
-    if !version.starts_with(b"HTTP/1.") {
-        return Err(bad("status line does not start with HTTP/1."));
+/// One connection that stays open across several exchanges, for what a one-shot [`send`] cannot show: responses arriving piece by piece,
+/// keep-alive, an interim `100 Continue`, who closes the connection and when. Reads time out after [`DEFAULT_TIMEOUT`] unless told otherwise.
+pub struct Conn {
+    reader: Reader<tokio::net::tcp::OwnedReadHalf>,
+    write: tokio::net::tcp::OwnedWriteHalf,
+    timeout: Duration,
+}
+
+fn timed_out() -> io::Error {
+    io::Error::new(io::ErrorKind::TimedOut, "no data before the timeout")
+}
+
+impl Conn {
+    /// Connect to `addr`.
+    pub async fn open(addr: SocketAddr) -> io::Result<Self> {
+        let (read, write) = TcpStream::connect(addr).await?.into_split();
+        Ok(Self {
+            reader: Reader {
+                stream: read,
+                buf: Vec::new(),
+                eof: false,
+            },
+            write,
+            timeout: DEFAULT_TIMEOUT,
+        })
     }
-    let status: u16 = std::str::from_utf8(parts.next().unwrap_or_default())
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| bad("status code is not a number"))?;
-    let reason = parts.next().unwrap_or_default().to_vec();
 
-    let mut headers = Vec::new();
-    loop {
-        let line = r.line().await?;
-        if line.is_empty() {
-            break;
-        }
-        let colon = line
+    /// Fail a read that takes longer than `timeout` (a case that expects data to arrive promptly uses a short one, so a broken adapter
+    /// fails quickly).
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    /// Write bytes as given.
+    pub async fn write(&mut self, bytes: &[u8]) -> io::Result<()> {
+        self.write.write_all(bytes).await
+    }
+
+    /// Write a whole request (its body, if any, too).
+    pub async fn send(&mut self, request: &RawRequest) -> io::Result<()> {
+        self.write(&request.to_bytes()).await
+    }
+
+    /// Read one response head (an interim `1xx` is a response too).
+    pub async fn head(&mut self) -> io::Result<RawResponse> {
+        tokio::time::timeout(self.timeout, self.reader.head())
+            .await
+            .map_err(|_| timed_out())?
+    }
+
+    /// Read the next chunk of a chunked body, as soon as it arrives; `None` after the last one.
+    pub async fn chunk(&mut self) -> io::Result<Option<Vec<u8>>> {
+        tokio::time::timeout(self.timeout, self.reader.chunk())
+            .await
+            .map_err(|_| timed_out())?
+    }
+
+    /// Read one whole response to a request of `method`.
+    pub async fn response(&mut self, method: &str) -> io::Result<RawResponse> {
+        let head_request = method.eq_ignore_ascii_case("HEAD");
+        tokio::time::timeout(self.timeout, async {
+            let head = self.reader.head().await?;
+            self.reader.finish(head, head_request).await
+        })
+        .await
+        .map_err(|_| timed_out())?
+    }
+
+    /// Send a request and read its response, on this connection. Unlike [`send`], a request without a `Connection` header asks to keep
+    /// the connection alive, since reuse is the point.
+    pub async fn exchange(&mut self, request: &RawRequest) -> io::Result<RawResponse> {
+        let has_connection = request
+            .headers
             .iter()
-            .position(|&b| b == b':')
-            .ok_or_else(|| bad("header line without a colon"))?;
-        headers.push((line[..colon].to_vec(), trim(&line[colon + 1..]).to_vec()));
-    }
-
-    let mut res = RawResponse {
-        status,
-        reason,
-        headers,
-        body: Vec::new(),
-    };
-    let no_body = head_request || (100..200).contains(&status) || status == 204 || status == 304;
-    if no_body {
-        return Ok(res);
-    }
-
-    let chunked = res
-        .header_values("transfer-encoding")
-        .iter()
-        .any(|v| v.to_ascii_lowercase().windows(7).any(|w| w == b"chunked"));
-    if chunked {
-        loop {
-            let size_line = r.line().await?;
-            let size_text = size_line.split(|&b| b == b';').next().unwrap_or_default();
-            let size = std::str::from_utf8(trim(size_text))
-                .ok()
-                .and_then(|s| usize::from_str_radix(s, 16).ok())
-                .ok_or_else(|| bad("chunk size is not hex"))?;
-            if size == 0 {
-                while !r.line().await?.is_empty() {} // trailers
-                break;
-            }
-            res.body.extend(r.exact(size).await?);
-            if !r.line().await?.is_empty() {
-                return Err(bad("chunk not followed by CRLF"));
-            }
+            .any(|(k, _)| k.eq_ignore_ascii_case(b"connection"));
+        if has_connection {
+            self.send(request).await?;
+        } else {
+            self.send(&request.clone().header("Connection", "keep-alive"))
+                .await?;
         }
-    } else if let Some(len) = res.header_values("content-length").first() {
-        let n: usize = std::str::from_utf8(len)
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .ok_or_else(|| bad("Content-Length is not a number"))?;
-        res.body = r.exact(n).await?;
-    } else {
-        res.body = r.read_to_close().await?;
+        let method = String::from_utf8_lossy(&request.method).into_owned();
+        self.response(&method).await
     }
-    Ok(res)
+
+    /// `true` if the server closes the connection (end of stream or a reset) within `within`; `false` if it stays open and silent, or
+    /// sends something.
+    pub async fn closed_by_peer(&mut self, within: Duration) -> bool {
+        if self.reader.eof {
+            return true;
+        }
+        match tokio::time::timeout(within, self.reader.fill()).await {
+            Ok(Err(_)) => true,
+            Ok(Ok(())) => self.reader.eof,
+            Err(_) => false,
+        }
+    }
 }
 
 #[cfg(test)]

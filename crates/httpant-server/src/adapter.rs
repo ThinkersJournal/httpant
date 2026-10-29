@@ -56,10 +56,8 @@ impl RunningServer {
         self.addr
     }
 
-    /// Stop accepting new connections and wait for the accept loop to end.
-    ///
-    /// This is **not** a graceful shutdown: whether an in-flight request completes is conformance case 9 (not yet run) and shows in
-    /// [`Capabilities::graceful_shutdown`] as `Unknown`.
+    /// Stop accepting new connections, let every request in flight finish, close idle keep-alive connections, and return once they have
+    /// (conformance case 9). There is no grace period yet: a request that never finishes keeps this from returning.
     pub async fn shutdown(mut self) -> Result<()> {
         if let Some(stop) = self.stop.take() {
             let _ = stop.send(());

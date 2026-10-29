@@ -1,22 +1,25 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt adapter conformance suite (design `docs/HTTPANT-DESIGN.md`, section 6).
 //!
-//! - [`CASES`]: the first seven cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
+//! - [`CASES`]: twelve cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
 //!   minimal HTTP/1.1 client. The client is deliberately not HTTPAnt, hyper or any adapter, so a defect cannot hide on both ends of a test.
 //! - Every case lists the known-bad [`Mutant`]s it must fail on. [`check_case`] demands both halves: the reference passes **and** every mutant
 //!   fails. A case that passes on its mutant is itself a failing test.
-//! - Cases 8-12 of the design (streaming, shutdown, keep-alive, concurrency, HEAD) are not written yet.
+//! - Cases 1-7 are the old crate's defects restated; cases 8-12 (streaming, shutdown, keep-alive, concurrency, HEAD) need a live connection
+//!   and are in `live`. [`measure`] turns three of them into the capability matrix (`docs/CAPABILITY-MATRIX.md`).
 //!
 //! A new adapter is tested by implementing [`Subject`] for it (or wrapping it in [`AdapterSubject`]) and calling [`run_suite`].
 
 mod app;
 mod cases;
+mod live;
 mod mutants;
 pub mod raw;
 mod subject;
 
 use httpant_core::BoxFuture;
 
+pub use live::{Measured, measure};
 pub use mutants::Mutant;
 pub use subject::{AdapterSubject, App, MutantSubject, Subject, adapters, reference};
 
@@ -47,8 +50,8 @@ impl std::fmt::Debug for Case {
     }
 }
 
-/// The first seven cases: the old `web-server-abstraction` defects, restated as tests (survey, "conformance suite's first failing cases").
-pub const CASES: [Case; 7] = [
+/// The twelve cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
+pub const CASES: [Case; 12] = [
     Case {
         number: 1,
         id: "method-fidelity",
@@ -102,6 +105,41 @@ pub const CASES: [Case; 7] = [
         mutants: &[Mutant::TrimTrailingSlash],
         run: cases::path_rule,
     },
+    Case {
+        number: 8,
+        id: "streaming",
+        requirement: "the first chunk of a response reaches the client while the handler is still producing the rest; the handler sees the first chunk of a request body while the client is still sending",
+        mutants: &[Mutant::BufferResponseBody, Mutant::BufferRequestBody],
+        run: live::streaming,
+    },
+    Case {
+        number: 9,
+        id: "graceful-shutdown",
+        requirement: "after shutdown is requested a request in flight completes, an idle keep-alive connection is closed, new connections are refused, and shutdown returns after the request completes",
+        mutants: &[Mutant::AbortOnShutdown],
+        run: live::graceful_shutdown,
+    },
+    Case {
+        number: 10,
+        id: "connection-handling",
+        requirement: "two requests share one connection; `Connection: close` is honoured; `Expect: 100-continue` gets `100 Continue` before the body is sent",
+        mutants: &[Mutant::ForceConnectionClose],
+        run: live::connection_handling,
+    },
+    Case {
+        number: 11,
+        id: "concurrency",
+        requirement: "1,000 requests, 250 at a time, are each answered with their own response, and fast enough that requests overlap",
+        mutants: &[Mutant::SerialiseRequests],
+        run: live::concurrency,
+    },
+    Case {
+        number: 12,
+        id: "head",
+        requirement: "HEAD returns the headers GET returns and no body, and the connection stays usable",
+        mutants: &[Mutant::HeadStripsHeaders],
+        run: live::head,
+    },
 ];
 
 /// Run every case against `subject`: `(case number, result)` for each.
@@ -142,7 +180,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cases_are_numbered_one_to_seven_in_order() {
+    fn cases_are_numbered_one_to_twelve_in_order() {
         for (i, c) in CASES.iter().enumerate() {
             assert_eq!(usize::from(c.number), i + 1, "{}", c.id);
         }
@@ -175,6 +213,12 @@ mod tests {
             Mutant::TruncateRequestBody,
             Mutant::HardCodeGetRoot,
             Mutant::TrimTrailingSlash,
+            Mutant::BufferResponseBody,
+            Mutant::BufferRequestBody,
+            Mutant::AbortOnShutdown,
+            Mutant::ForceConnectionClose,
+            Mutant::SerialiseRequests,
+            Mutant::HeadStripsHeaders,
         ];
         for m in all {
             let users = CASES.iter().filter(|c| c.mutants.contains(&m)).count();
@@ -201,6 +245,86 @@ mod tests {
     case_test!(case_5_bodies, 4);
     case_test!(case_6_request_identity, 5);
     case_test!(case_7_path_rule, 6);
+    case_test!(case_8_streaming, 7);
+    case_test!(case_9_graceful_shutdown, 8);
+    case_test!(case_10_connection_handling, 9);
+    case_test!(case_11_concurrency, 10);
+    case_test!(case_12_head, 11);
+
+    #[tokio::test]
+    async fn declared_capabilities_match_the_measured_ones() {
+        for subject in &adapters() {
+            let declared = subject.declared().expect("an adapter declares");
+            let measured = measure(subject.as_ref()).await;
+            assert_eq!(
+                (
+                    declared.streaming_request_bodies,
+                    declared.streaming_response_bodies,
+                    declared.graceful_shutdown
+                ),
+                (
+                    measured.streaming_request_bodies,
+                    measured.streaming_response_bodies,
+                    measured.graceful_shutdown
+                ),
+                "{}: declared capabilities differ from what the suite measured",
+                subject.name()
+            );
+        }
+    }
+
+    /// `docs/CAPABILITY-MATRIX.md` holds the table this renders. `HTTPANT_BLESS=1 cargo test` rewrites it.
+    #[tokio::test]
+    async fn the_capability_matrix_document_is_current() {
+        let mut rows = String::new();
+        for subject in &adapters() {
+            let m = measure(subject.as_ref()).await;
+            let declared = subject.declared().expect("an adapter declares");
+            let cell = |s: httpant_core::Support| match s {
+                httpant_core::Support::Yes => "yes",
+                httpant_core::Support::No => "no",
+                httpant_core::Support::Unknown => "unknown",
+            };
+            rows.push_str(&format!(
+                "| {} | {} | {} | {} | {} | {} |\n",
+                subject
+                    .name()
+                    .trim_matches('`')
+                    .replace("adapter `", "")
+                    .replace('`', ""),
+                cell(m.streaming_request_bodies),
+                cell(m.streaming_response_bodies),
+                cell(m.graceful_shutdown),
+                cell(declared.local_handlers),
+                declared.default_body_limit,
+            ));
+        }
+        let table = format!(
+            "| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | default body limit (bytes) |\n|---|---|---|---|---|---|\n{rows}"
+        );
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../docs/CAPABILITY-MATRIX.md"
+        );
+        let current = std::fs::read_to_string(path)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
+        let start = "<!-- matrix:start -->\n";
+        let end = "<!-- matrix:end -->";
+        let (Some(a), Some(b)) = (current.find(start), current.find(end)) else {
+            panic!("docs/CAPABILITY-MATRIX.md has no matrix markers");
+        };
+        if std::env::var_os("HTTPANT_BLESS").is_some() {
+            let updated = format!("{}{start}{table}{}", &current[..a], &current[b..]);
+            std::fs::write(path, updated).unwrap();
+            return;
+        }
+        assert_eq!(
+            &current[a + start.len()..b],
+            table,
+            "docs/CAPABILITY-MATRIX.md is out of date: run `HTTPANT_BLESS=1 cargo test -p httpant-conformance`"
+        );
+    }
 
     #[tokio::test]
     async fn the_whole_suite_passes_on_every_adapter() {

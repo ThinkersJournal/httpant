@@ -4,8 +4,9 @@
 
 use std::convert::Infallible;
 
-use httpant_core::http::{HeaderMap, Method, StatusCode, Uri};
-use httpant_core::{Body, BoxFuture, BoxService, Request, Response};
+use httpant_core::http::{HeaderMap, HeaderValue, Method, StatusCode, Uri};
+use httpant_core::{Body, BoxFuture, BoxService, Request, Response, Result};
+use httpant_server::RunningServer;
 use tower::ServiceExt;
 
 use crate::app::BODY_LIMIT;
@@ -31,6 +32,18 @@ pub enum Mutant {
     HardCodeGetRoot,
     /// A trailing slash is trimmed before routing (old: poem).
     TrimTrailingSlash,
+    /// The whole response is collected before the first byte is sent (frameworks that buffer).
+    BufferResponseBody,
+    /// The whole request body is collected before the handler runs (frameworks that buffer).
+    BufferRequestBody,
+    /// Shutdown cuts every connection at once, in-flight requests included.
+    AbortOnShutdown,
+    /// Every response says `Connection: close`, so the connection cannot be reused.
+    ForceConnectionClose,
+    /// One request at a time: a global lock held across the handler.
+    SerialiseRequests,
+    /// A HEAD response loses the headers the GET response has.
+    HeadStripsHeaders,
 }
 
 impl Mutant {
@@ -46,6 +59,12 @@ impl Mutant {
             Mutant::TruncateRequestBody => "truncate-request-body",
             Mutant::HardCodeGetRoot => "hard-code-get-root",
             Mutant::TrimTrailingSlash => "trim-trailing-slash",
+            Mutant::BufferResponseBody => "buffer-response-body",
+            Mutant::BufferRequestBody => "buffer-request-body",
+            Mutant::AbortOnShutdown => "abort-on-shutdown",
+            Mutant::ForceConnectionClose => "force-connection-close",
+            Mutant::SerialiseRequests => "serialise-requests",
+            Mutant::HeadStripsHeaders => "head-strips-headers",
         }
     }
 }
@@ -55,7 +74,8 @@ type Step = fn(BoxService, Request) -> BoxFuture<'static, Response>;
 /// Wrap `svc` so every request goes through `mutant`'s defect.
 pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
     let step: Step = match mutant {
-        Mutant::NoMiddleware => return svc, // the defect is in how the subject builds the service
+        // The defect is in how the subject builds or runs the service, not in the service.
+        Mutant::NoMiddleware | Mutant::AbortOnShutdown => return svc,
         Mutant::FoldMethodToGet => fold_method_to_get,
         Mutant::ClampStatus => clamp_status,
         Mutant::HashMapHeaders => hashmap_headers,
@@ -64,6 +84,11 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         Mutant::TruncateRequestBody => truncate_request_body,
         Mutant::HardCodeGetRoot => hard_code_get_root,
         Mutant::TrimTrailingSlash => trim_trailing_slash,
+        Mutant::BufferResponseBody => buffer_response_body,
+        Mutant::BufferRequestBody => buffer_request_body,
+        Mutant::ForceConnectionClose => force_connection_close,
+        Mutant::SerialiseRequests => serialise_requests,
+        Mutant::HeadStripsHeaders => head_strips_headers,
     };
     BoxService::new(tower::service_fn(move |req: Request| {
         let svc = svc.clone();
@@ -182,4 +207,85 @@ fn trim_trailing_slash(svc: BoxService, mut req: Request) -> BoxFuture<'static, 
         }
         call(svc, req).await
     })
+}
+
+fn buffer_response_body(svc: BoxService, req: Request) -> BoxFuture<'static, Response> {
+    Box::pin(async move {
+        let (parts, body) = call(svc, req).await.into_parts();
+        let bytes = body.bytes(64 * 1024 * 1024).await.unwrap_or_default();
+        Response::from_parts(parts, Body::from_bytes(bytes))
+    })
+}
+
+fn buffer_request_body(svc: BoxService, req: Request) -> BoxFuture<'static, Response> {
+    Box::pin(async move {
+        let (parts, body) = req.into_parts();
+        let bytes = body.bytes(64 * 1024 * 1024).await.unwrap_or_default();
+        call(svc, Request::from_parts(parts, Body::from_bytes(bytes))).await
+    })
+}
+
+fn force_connection_close(svc: BoxService, req: Request) -> BoxFuture<'static, Response> {
+    Box::pin(async move {
+        let mut res = call(svc, req).await;
+        res.headers_mut()
+            .insert("connection", HeaderValue::from_static("close"));
+        res
+    })
+}
+
+static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+fn serialise_requests(svc: BoxService, req: Request) -> BoxFuture<'static, Response> {
+    Box::pin(async move {
+        let _turn = ONE_AT_A_TIME.lock().await;
+        call(svc, req).await
+    })
+}
+
+fn head_strips_headers(svc: BoxService, req: Request) -> BoxFuture<'static, Response> {
+    Box::pin(async move {
+        let head = req.method() == Method::HEAD;
+        let mut res = call(svc, req).await;
+        if head {
+            res.headers_mut().clear();
+            *res.body_mut() = Body::empty();
+        }
+        res
+    })
+}
+
+/// A copy of the reference accept loop whose shutdown drops every connection immediately: the defect [`Mutant::AbortOnShutdown`] stands for.
+pub fn serve_aborting(svc: BoxService, listener: std::net::TcpListener) -> Result<RunningServer> {
+    use hyper::server::conn::http1;
+    use hyper::service::service_fn;
+    use hyper_util::rt::TokioIo;
+    use tokio::sync::oneshot;
+    use tokio::task::JoinSet;
+
+    listener.set_nonblocking(true)?;
+    let addr = listener.local_addr()?;
+    let listener = tokio::net::TcpListener::from_std(listener)?;
+    let (stop, mut stopped) = oneshot::channel::<()>();
+    let task = tokio::spawn(async move {
+        let mut conns = JoinSet::new();
+        loop {
+            tokio::select! {
+                _ = &mut stopped => break,
+                accepted = listener.accept() => {
+                    let Ok((stream, _)) = accepted else { continue };
+                    let svc = svc.clone();
+                    conns.spawn(async move {
+                        let service = service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
+                            svc.clone().oneshot(req.map(Body::new))
+                        });
+                        let _ = http1::Builder::new().serve_connection(TokioIo::new(stream), service).await;
+                    });
+                }
+            }
+        }
+        // Dropping the set aborts every connection task: nothing in flight is allowed to finish.
+        drop(conns);
+    });
+    Ok(RunningServer::new(addr, stop, task))
 }

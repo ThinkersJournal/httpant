@@ -21,6 +21,11 @@ impl ServerAdapter for AxumAdapter {
 
     fn capabilities(&self) -> Capabilities {
         let mut c = Capabilities::default();
+        // Measured by conformance cases 8 and 9 (the test `declared_capabilities_match_the_measured_ones`), not asserted.
+        c.streaming_request_bodies = Support::Yes;
+        c.streaming_response_bodies = Support::Yes;
+        c.graceful_shutdown = Support::Yes;
+        // Not measurable by this suite: a handler that is not `Send` cannot be written against the `Send` service contract.
         c.local_handlers = Support::No;
         c
     }
