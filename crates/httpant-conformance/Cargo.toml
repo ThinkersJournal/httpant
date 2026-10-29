@@ -1,0 +1,15 @@
+[package]
+name = "httpant-conformance"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "HTTPAnt adapter conformance suite (skeleton): case registry and an independent raw-TCP HTTP/1.1 client"
+publish = false
+
+[dependencies]
+tokio = { workspace = true, features = ["net", "io-util", "time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "net", "io-util", "time"] }

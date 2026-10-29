@@ -1,100 +1,21 @@
-[package]
-name = "web-server-abstraction"
-version = "1.0.10"
+[workspace]
+resolver = "3"
+members = ["crates/httpant-core", "crates/httpant-conformance"]
+
+[workspace.package]
+# One number for every crate in the project (portfolio rule). 0.1.0: a new line, not a continuation of web-server-abstraction 1.0.x.
+version = "0.1.0"
 edition = "2024"
 authors = ["Eric Evans <ciresnave@gmail.com>"]
-description = "An ergonomic abstraction layer over popular Rust web frameworks"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/ciresnave/web-server-abstraction"
-keywords = ["web", "server", "framework", "abstraction", "tower"]
-categories = ["web-programming", "network-programming"]
+repository = "https://github.com/ThinkersJournal/httpant"
 
-[features]
-default = ["axum"]
-axum = ["dep:axum", "dep:tower", "dep:tower-http"]
-
-# Framework adapters currently being updated for new framework versions
-# These features are available but adapters may have limited functionality
-actix-web = ["dep:actix-web"]
-rocket = ["dep:rocket"]
-warp = ["dep:warp"]
-salvo = ["dep:salvo"]
-poem = ["dep:poem"]
-
-# Performance and monitoring features
-benchmarks = ["dep:criterion"]
-security = ["dep:rustls", "dep:rustls-pemfile"]
-
-# All framework adapters
-all-frameworks = ["axum", "actix-web", "rocket", "warp", "salvo", "poem"]
-
-[dependencies]
-# Core dependencies - always included
-async-trait = "0.1"
-http = "1.0"
-http-body = "1.0"
+[workspace.dependencies]
+bytes = "1"
+http = "1"
+http-body = "1"
 http-body-util = "0.1"
-bytes = "1.0"
-futures = "0.3"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-serde_yaml = "0.9"
-tokio = { version = "1.0", features = ["full"] }
-urlencoding = "2.1"
-thiserror = "1.0"
-mime = "0.3"
-mime_guess = "2.0"
-sha1 = "0.10"
-base64 = "0.22"
-uuid = { version = "1.0", features = ["v4", "serde"] }
-hex = "0.4"
-flate2 = "1.0"
-
-# Logging and tracing for monitoring
-tracing = "0.1"
-tracing-subscriber = "0.3"
-
-# Performance monitoring
-criterion = { version = "0.5", optional = true }
-
-# Security enhancements
-rustls = { version = "0.23", optional = true }
-rustls-pemfile = { version = "2.0", optional = true }
-
-# FFI support for multi-language integration
-libc = "0.2"
-
-# Additional regex support for security patterns
-regex = "1.10"
-
-# Random number generation for security tokens
-rand = "0.8"
-
-# Authentication & Authorization - core to the abstraction
-auth-framework = { version = "0.4.2" }
-
-# Constrain sqlx to a stable-compatible version (auth-framework pulls this in)
-sqlx = { version = "0.7", default-features = false }
-
-# Tower ecosystem - included by default for core functionality
-tower = { version = "0.5", optional = true }
-tower-http = { version = "0.6", optional = true, features = ["trace"] }
-
-# Framework-specific dependencies (optional)
-axum = { version = "0.8", optional = true }
-
-# Framework adapters - updated for latest framework versions
-# ✅ actix-web: Working with 4.9+ (fixed API compatibility)
-# ✅ warp: Working with 0.4+ (added server feature)
-# ✅ rocket: Working with 0.5+ (Handler trait implementation complete)
-# ✅ salvo: Working with 0.82+ (production-ready adapter)
-# ✅ poem: Working with 3.1+ (production-ready adapter)
-actix-web = { version = "4.9", optional = true }
-rocket = { version = "0.5", optional = true, features = ["json"] }
-warp = { version = "0.4", optional = true, features = ["server"] }
-salvo = { version = "0.82", optional = true }
-poem = { version = "3.1", optional = true }
-num_cpus = "1.17.0"
-
-[dev-dependencies]
-tokio-test = "0.4"
+thiserror = "2"
+tokio = "1"
+tower = { version = "0.5", default-features = false, features = ["util"] }
+futures-util = { version = "0.3", default-features = false }
