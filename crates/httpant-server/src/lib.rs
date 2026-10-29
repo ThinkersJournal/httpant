@@ -3,11 +3,15 @@
 //! reference [`HyperAdapter`]. Other adapters arrive one slice at a time, each only after it passes the conformance suite.
 
 mod adapter;
+#[cfg(feature = "axum")]
+mod axum_adapter;
 mod hyper_adapter;
 
 use std::sync::Arc;
 
 pub use adapter::{RunningServer, ServeOptions, ServerAdapter};
+#[cfg(feature = "axum")]
+pub use axum_adapter::AxumAdapter;
 pub use httpant_core as core;
 use httpant_core::http::Method;
 use httpant_core::{BoxService, Error, Handler, LayerFn, Result, Router, apply_layers, layer_fn};
@@ -15,6 +19,10 @@ pub use hyper_adapter::HyperAdapter;
 use tokio::net::ToSocketAddrs;
 
 /// The ids of the adapters compiled into this build.
+#[cfg(feature = "axum")]
+pub const ADAPTER_IDS: &[&str] = &["hyper", "axum"];
+/// The ids of the adapters compiled into this build.
+#[cfg(not(feature = "axum"))]
 pub const ADAPTER_IDS: &[&str] = &["hyper"];
 
 /// Describes routes and layers once, then runs them on an adapter chosen by id (default `hyper`).
@@ -44,6 +52,10 @@ impl Server {
     pub fn with_adapter(id: &str) -> Result<Self> {
         match id {
             "hyper" => Ok(Self::new()),
+            #[cfg(feature = "axum")]
+            "axum" => Ok(Self::with_adapter_impl(AxumAdapter)),
+            #[cfg(not(feature = "axum"))]
+            "axum" => Err(Error::AdapterNotCompiledIn { id: id.to_owned() }),
             _ => Err(Error::UnknownAdapter {
                 id: id.to_owned(),
                 available: ADAPTER_IDS.to_vec(),
@@ -124,9 +136,28 @@ mod tests {
             .expect("rocket is not an adapter yet");
         assert_eq!(
             err.to_string(),
-            "unknown adapter `rocket`: use one of [\"hyper\"]"
+            format!("unknown adapter `rocket`: use one of {ADAPTER_IDS:?}")
         );
         assert!(Server::with_adapter("hyper").is_ok());
+    }
+
+    #[cfg(feature = "axum")]
+    #[test]
+    fn axum_is_chosen_by_id_when_compiled_in() {
+        assert!(Server::with_adapter("axum").is_ok());
+        assert!(ADAPTER_IDS.contains(&"axum"));
+    }
+
+    #[cfg(not(feature = "axum"))]
+    #[test]
+    fn axum_without_its_feature_says_which_feature_to_enable() {
+        let err = Server::with_adapter("axum")
+            .err()
+            .expect("axum is not compiled in");
+        assert_eq!(
+            err.to_string(),
+            "adapter `axum` is not compiled in: enable the `axum` feature"
+        );
     }
 
     #[test]

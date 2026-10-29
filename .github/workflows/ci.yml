@@ -41,6 +41,9 @@ jobs:
       - name: cargo test
         run: cargo test --locked --no-fail-fast
 
+      - name: httpant-server alone (hyper only, no optional adapters)
+        run: cargo test --locked -p httpant-server --lib
+
       - name: hello-world example, run in CI
         run: cargo run --locked --example hello -p httpant-server
 
