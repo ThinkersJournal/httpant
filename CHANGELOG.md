@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.11] - 2026-10-29
+
+- Slice 1 of HTTPAnt (provisional option A): workspace with `httpant-core` (http types, streaming `Body` with explicit limits, `Error`, `IntoResponse`, `Capabilities`, boxed Tower service type) and `httpant-conformance` (skeleton: case registry for cases 1-7, raw-TCP HTTP/1.1 client). Removed the old `web-server-abstraction` source tree from `main` (kept in git history); `cargo deny` is now green. Not published.
+
 ## [1.0.10] - 2026-10-29
 
 - Added .github/CODEOWNERS and docs/PATENT-SWEEP.md (an honest "not yet performed" record; nothing may be published until it is replaced by a real sweep). Not published.

@@ -1,0 +1,20 @@
+[package]
+name = "httpant-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "HTTPAnt core types: the http crate's request/response types, a streaming Body with explicit limits, Error, IntoResponse, Capabilities"
+
+[dependencies]
+bytes.workspace = true
+http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+thiserror.workspace = true
+tower.workspace = true
+
+[dev-dependencies]
+futures-util = { workspace = true, features = ["alloc"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
