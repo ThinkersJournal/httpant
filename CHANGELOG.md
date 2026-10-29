@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Added docs/BENCHMARKS.md (TechEmpower R23, Rust JSON and Fortunes) and docs/ACTIX-ADAPTER-NOTES.md (actix service model, actix-tower 0.1.4). Docs only, not published.
 
+## [1.0.7] - 2026-10-28
+
+- README: known-issues section for web-server-abstraction 1.0.2 (superseded by HTTPAnt), from the survey. Docs only, not published.
+
+## [1.0.6] - 2026-10-28
+
+- Added docs/OLD-CRATE-SURVEY.md: survey of this crate for HTTPAnt (what to keep, what to discard, first conformance cases). Docs only, not published.
+
 ## [1.0.5] - 2026-10-28
 
 - Added CI (fmt, clippy -D warnings, build+test on ubuntu and windows, doc, cargo deny) and deny.toml, same shape as mcpant; committed Cargo.lock; cargo fmt; h2 updated past RUSTSEC-2026-0258. Not published.
