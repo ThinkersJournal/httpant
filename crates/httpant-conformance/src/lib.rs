@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt adapter conformance suite (design `docs/HTTPANT-DESIGN.md`, section 6).
 //!
 //! - [`CASES`]: the first seven cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own

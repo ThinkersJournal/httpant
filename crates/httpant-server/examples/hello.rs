@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Serve "hello" and fetch it. CI runs this (`cargo run --example hello -p httpant-server`), so it cannot rot.
 //! The client half is slice 3; until then the fetch is a plain std socket, and the server side is the part that is final.
 //!

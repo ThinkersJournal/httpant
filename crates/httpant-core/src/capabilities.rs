@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 /// Default limit applied when buffering a body, in bytes (2 MiB). Visible in [`Capabilities`] so it is never a hidden number.
 pub const DEFAULT_BODY_LIMIT: usize = 2 * 1024 * 1024;
 

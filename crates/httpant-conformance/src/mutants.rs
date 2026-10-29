@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! Known-bad variants of the reference adapter. Each reproduces a defect the survey measured in the old crate
 //! (`docs/OLD-CRATE-SURVEY.md`), implemented as a wrapper around the service the adapter runs.
 

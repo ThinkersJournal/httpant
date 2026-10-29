@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! A minimal HTTP/1.1 client over a bare TCP socket, for the conformance suite only.
 //!
 //! It writes exactly the bytes it is given and reports exactly the bytes it receives (header names and values are byte strings, repeated

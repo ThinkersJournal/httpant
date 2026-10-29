@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! The case bodies. Each starts the shared application on the subject and speaks to it over a real socket with [`crate::raw`].
 
 use httpant_core::BoxFuture;

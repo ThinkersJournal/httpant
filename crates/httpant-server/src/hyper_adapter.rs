@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use httpant_core::{Body, BoxFuture, BoxService, Capabilities, Request, Result, Support};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;

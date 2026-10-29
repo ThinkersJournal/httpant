@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! The application every case runs against, so a case differs from the next only in what it sends.
 
 use std::convert::Infallible;

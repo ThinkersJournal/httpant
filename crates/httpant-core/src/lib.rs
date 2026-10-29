@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt core types (design: `docs/HTTPANT-DESIGN.md`, sections 1-3).
 //!
 //! The request, response, method, status, header and URI types are the [`http`] crate's, re-exported unchanged, so the information the old

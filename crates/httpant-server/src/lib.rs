@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt server half (design `docs/HTTPANT-DESIGN.md`, section 4): the [`Server`] builder, the [`ServerAdapter`] trait, and the
 //! reference [`HyperAdapter`]. Other adapters arrive one slice at a time, each only after it passes the conformance suite.
 

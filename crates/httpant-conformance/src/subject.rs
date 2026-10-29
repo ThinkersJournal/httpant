@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT OR Apache-2.0
 use httpant_core::{BoxFuture, LayerFn, Result, Router, apply_layers};
 use httpant_server::{HyperAdapter, RunningServer, ServeOptions, ServerAdapter};
 
