@@ -67,14 +67,14 @@ dependencies = [
 
 [[package]]
 name = "httpant-conformance"
-version = "1.0.11"
+version = "0.1.0"
 dependencies = [
  "tokio",
 ]
 
 [[package]]
 name = "httpant-core"
-version = "1.0.11"
+version = "0.1.0"
 dependencies = [
  "bytes",
  "futures-util",
