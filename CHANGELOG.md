@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-10-30
+
+- Slice 2b: conformance cases 8-12 on every adapter. 8 streaming (response chunks and request chunks cross the wire while the other side is still producing them, gated by handler signals, not sleeps), 9 graceful shutdown, 10 keep-alive / `Connection: close` / `Expect: 100-continue`, 11 concurrency (1,000 requests, 250 at a time, each answered with its own number, handlers overlap), 12 HEAD. Six new known-bad mutants, each shown to fail its case. First capability matrix (`docs/CAPABILITY-MATRIX.md`), rendered from the suite by a test that fails when the document is stale; each adapter's declared `Capabilities` must equal what the suite measured.
+- **Fixed a defect case 9 found in the 0.1.2 hyper adapter:** `shutdown()` only stopped accepting; idle keep-alive connections stayed open and kept being served, and `shutdown()` did not wait for requests in flight. It now drains: the listener closes, in-flight requests finish, idle connections close, and it returns when they have. (No grace period yet.)
+- `Router`: `HEAD` runs the `GET` handler when no `HEAD` route exists (the server drops the body); `405 Allow` lists `HEAD` beside `GET`.
+- The suite's raw client gains `Conn`, a connection that stays open (chunk-by-chunk reads, keep-alive, interim `100`, who-closes-when). Not published.
+
 ## [0.1.2] - 2026-10-30
 
 - Slice 2a: axum adapter (`AxumAdapter`, feature `axum` of `httpant-server`, `Server::with_adapter("axum")`); axum 0.8 serves the one boxed service as its fallback, so routing and error mapping are HTTPAnt's. The conformance suite now runs cases 1-7 on every adapter (hyper and axum both pass). Not published.

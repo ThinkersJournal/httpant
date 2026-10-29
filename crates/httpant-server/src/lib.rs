@@ -164,6 +164,6 @@ mod tests {
     fn the_hyper_adapter_declares_what_it_does_not_do() {
         let c = HyperAdapter.capabilities();
         assert_eq!(c.local_handlers, httpant_core::Support::No);
-        assert_eq!(c.graceful_shutdown, httpant_core::Support::Unknown);
+        assert_eq!(c.graceful_shutdown, httpant_core::Support::Yes);
     }
 }

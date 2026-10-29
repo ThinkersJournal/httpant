@@ -12,7 +12,13 @@ publish = false
 httpant-core.workspace = true
 httpant-server = { workspace = true, features = ["axum"] }
 tower.workspace = true
-tokio = { workspace = true, features = ["net", "io-util", "time", "rt"] }
+tokio = { workspace = true, features = ["net", "io-util", "time", "rt", "sync"] }
+bytes.workspace = true
+futures-util.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+hyper = { workspace = true, features = ["server", "http1"] }
+hyper-util = { workspace = true, features = ["tokio"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "net", "io-util", "time"] }

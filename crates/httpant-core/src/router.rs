@@ -45,6 +45,8 @@ impl PathParams {
 ///
 /// A known path with the wrong method answers `405` with an `Allow` header; an unknown path `404`. **No path normalisation**: `/a` and `/a/`
 /// are different paths, the same on every adapter (design section 3).
+///
+/// `HEAD` on a path with a `GET` route and no `HEAD` route runs the `GET` handler (and `Allow` lists `HEAD`); the server drops the body.
 #[derive(Clone, Default)]
 pub struct Router {
     routes: Vec<Route>,
@@ -149,26 +151,39 @@ fn matches(segments: &[Segment], path: &str) -> Option<PathParams> {
 async fn dispatch(routes: &[Route], mut req: Request) -> Response {
     let path = req.uri().path().to_owned();
     let mut allowed: Vec<&Method> = Vec::new();
+    // HEAD is answered by the GET handler unless a route says otherwise; the server, not the router, drops the body.
+    let mut head_fallback = None;
     for route in routes {
         if let Some(params) = matches(&route.segments, &path) {
             if route.method == *req.method() {
                 req.extensions_mut().insert(params);
                 return (route.handler)(req).await;
             }
+            if *req.method() == Method::HEAD
+                && route.method == Method::GET
+                && head_fallback.is_none()
+            {
+                head_fallback = Some((route, params));
+            }
             if !allowed.contains(&&route.method) {
                 allowed.push(&route.method);
             }
         }
     }
+    if let Some((route, params)) = head_fallback {
+        req.extensions_mut().insert(params);
+        return (route.handler)(req).await;
+    }
     if allowed.is_empty() {
         return StatusCode::NOT_FOUND.into_response();
     }
     let mut res = StatusCode::METHOD_NOT_ALLOWED.into_response();
-    let list = allowed
-        .iter()
-        .map(|m| m.as_str())
-        .collect::<Vec<_>>()
-        .join(", ");
+    let mut names: Vec<&str> = allowed.iter().map(|m| m.as_str()).collect();
+    if allowed.contains(&&Method::GET) && !allowed.contains(&&Method::HEAD) {
+        let at = names.iter().position(|n| *n == "GET").map_or(0, |i| i + 1);
+        names.insert(at, "HEAD");
+    }
+    let list = names.join(", ");
     if let Ok(v) = HeaderValue::from_str(&list) {
         res.headers_mut().insert(ALLOW, v);
     }
@@ -248,8 +263,20 @@ mod tests {
         );
         let res = call(r.clone(), "MKCOL", "/m").await;
         assert_eq!(res.status(), StatusCode::METHOD_NOT_ALLOWED);
-        assert_eq!(res.headers()[ALLOW], "GET, PROPFIND");
+        assert_eq!(res.headers()[ALLOW], "GET, HEAD, PROPFIND");
         assert_eq!(text(call(r, "PROPFIND", "/m").await).await, "pf");
+    }
+
+    #[tokio::test]
+    async fn head_runs_the_get_handler_unless_a_head_route_exists() {
+        let r = Router::new()
+            .get("/g", || async { "get" })
+            .route(Method::HEAD, "/h", || async { "explicit" })
+            .get("/h", || async { "get" });
+        assert_eq!(text(call(r.clone(), "HEAD", "/g").await).await, "get");
+        assert_eq!(text(call(r.clone(), "HEAD", "/h").await).await, "explicit");
+        let res = call(r, "HEAD", "/nope").await;
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

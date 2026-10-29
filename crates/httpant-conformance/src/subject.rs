@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-use httpant_core::{BoxFuture, LayerFn, Result, Router, apply_layers};
+use httpant_core::{BoxFuture, Capabilities, LayerFn, Result, Router, apply_layers};
 use httpant_server::{AxumAdapter, HyperAdapter, RunningServer, ServeOptions, ServerAdapter};
 
 use crate::mutants::{self, Mutant};
@@ -19,6 +19,11 @@ pub trait Subject: Send + Sync {
 
     /// Start serving `app` on a free local port.
     fn start(&self, app: App) -> BoxFuture<'_, Result<RunningServer>>;
+
+    /// What the subject says it can do, if it is a real adapter (a mutant says nothing).
+    fn declared(&self) -> Option<Capabilities> {
+        None
+    }
 }
 
 fn free_listener() -> std::io::Result<std::net::TcpListener> {
@@ -31,6 +36,10 @@ pub struct AdapterSubject<A>(pub A);
 impl<A: ServerAdapter> Subject for AdapterSubject<A> {
     fn name(&self) -> String {
         format!("adapter `{}`", self.0.id())
+    }
+
+    fn declared(&self) -> Option<Capabilities> {
+        Some(self.0.capabilities())
     }
 
     fn start(&self, app: App) -> BoxFuture<'_, Result<RunningServer>> {
@@ -70,6 +79,9 @@ impl Subject for MutantSubject {
                 apply_layers(app.router.into_service(), app.layers)
             };
             let svc = mutants::apply(self.0, svc);
+            if self.0 == Mutant::AbortOnShutdown {
+                return mutants::serve_aborting(svc, free_listener()?);
+            }
             HyperAdapter
                 .serve(svc, ServeOptions::new(free_listener()?))
                 .await
