@@ -149,6 +149,7 @@ pub fn graceful_shutdown(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
             .map_err(|e| format!("keep-alive connection, first request: {e}"))?;
         ensure!(first.status == 200, "GET /m: status {}", first.status);
 
+        let t_stop = tokio::time::Instant::now();
         let stopping = tokio::spawn(server.shutdown());
 
         // New connections are refused (the listener is closed), within a few seconds of the request.
@@ -163,13 +164,15 @@ pub fn graceful_shutdown(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
             );
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
+        let t_refused = t_stop.elapsed();
         ensure!(
             idle.closed_by_peer(PROMPT).await,
             "an idle keep-alive connection was still open {PROMPT:?} after shutdown was requested"
         );
         ensure!(
             !stopping.is_finished(),
-            "shutdown returned while a request was still in flight"
+            "shutdown returned while a request was still in flight ({:?} after it was requested; new connections refused after {t_refused:?})",
+            t_stop.elapsed()
         );
 
         gates.slow_release.notify_one();
@@ -385,15 +388,30 @@ pub struct Measured {
     pub graceful_shutdown: Support,
 }
 
-fn support(r: &Outcome) -> Support {
-    if r.is_ok() { Support::Yes } else { Support::No }
+/// `Yes` when the probe passed. A probe that fails says why on stderr, which a failing test prints: a bare `No` hides the reason.
+fn support(probe: &str, subject: &str, r: &Outcome) -> Support {
+    match r {
+        Ok(()) => Support::Yes,
+        Err(why) => {
+            eprintln!("capability probe `{probe}` failed on {subject}: {why}");
+            Support::No
+        }
+    }
 }
 
 /// Run the capability probes against `subject`.
 pub async fn measure(s: &dyn Subject) -> Measured {
     Measured {
-        streaming_request_bodies: support(&streaming_request(s).await),
-        streaming_response_bodies: support(&streaming_response(s).await),
-        graceful_shutdown: support(&graceful_shutdown(s).await),
+        streaming_request_bodies: support(
+            "streaming request bodies",
+            &s.name(),
+            &streaming_request(s).await,
+        ),
+        streaming_response_bodies: support(
+            "streaming response bodies",
+            &s.name(),
+            &streaming_response(s).await,
+        ),
+        graceful_shutdown: support("graceful shutdown", &s.name(), &graceful_shutdown(s).await),
     }
 }

@@ -11,13 +11,14 @@ description = "HTTPAnt server half: the Server builder, the ServerAdapter trait 
 # Adapters other than the hyper reference are opt-in: a user pays only for the framework they pick.
 axum = ["dep:axum"]
 actix-web = ["dep:actix-web", "dep:futures-util", "dep:http-body", "dep:http-body-util"]
+salvo = ["dep:salvo_core", "dep:futures-util", "dep:http-body", "dep:http-body-util"]
 poem = ["dep:poem", "dep:futures-util", "dep:http-body", "dep:http-body-util"]
 
 [dependencies]
 httpant-core.workspace = true
 hyper = { workspace = true, features = ["server", "http1"] }
 hyper-util = { workspace = true, features = ["tokio"] }
-tokio = { workspace = true, features = ["net", "rt", "sync", "macros"] }
+tokio = { workspace = true, features = ["net", "rt", "sync", "macros", "time"] }
 tower.workspace = true
 axum = { workspace = true, optional = true, features = ["tokio", "http1"] }
 actix-web = { workspace = true, optional = true }
@@ -25,6 +26,7 @@ futures-util = { workspace = true, optional = true }
 http-body = { workspace = true, optional = true }
 http-body-util = { workspace = true, optional = true }
 poem = { workspace = true, optional = true, features = ["server"] }
+salvo_core = { workspace = true, optional = true, features = ["server", "server-handle", "http1"] }
 
 [dev-dependencies]
 httpant-client.workspace = true

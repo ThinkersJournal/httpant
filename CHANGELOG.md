@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-10-30
+
+- Slice 6: salvo adapter (`SalvoAdapter`, feature `salvo` of `httpant-server`, `Server::with_adapter("salvo")`), salvo_core 1.0 with default features off. The one boxed service is the goal of a catch-all salvo route, so routing and error mapping are HTTPAnt's. Request bodies stream through (declared `Content-Length` is the size hint); a response body of known length keeps its `Content-Length`, unknown length is chunked. Conformance cases 1-12 pass on hyper, axum, actix-web, poem and salvo; the matrix gains the row. salvo keeps its listening socket open until it has finished draining, so on Linux CI (not on Windows) a client could still connect during shutdown and case 9 failed; the adapter hands salvo an acceptor it can close at shutdown, and counts requests (not only connections) so `shutdown()` returns when the last response has been sent. Not published.
+
 ## [0.1.6] - 2026-10-30
 
 - Slice 5: poem adapter (`PoemAdapter`, feature `poem` of `httpant-server`, `Server::with_adapter("poem")`), poem 3.1 with default features off. poem serves the one boxed service as its only endpoint, so routing and error mapping are HTTPAnt's. Request bodies stream through (declared `Content-Length` is the size hint, as on actix); a response body of known length keeps its `Content-Length` (case 12 found the first draft sent every response chunked); unknown length is chunked. Conformance cases 1-12 pass on hyper, axum, actix-web and poem; the matrix gains the row. Not published.
