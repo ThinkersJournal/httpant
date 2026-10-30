@@ -458,13 +458,13 @@ pub fn shutdown_grace(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
             }
         }
         // The client of the abandoned request was told: a 503 or a closed connection, not silence.
-        match stuck.response("GET").await {
-            Ok(res) => ensure!(
+        // An error here means the connection ended, which is also an answer.
+        if let Ok(res) = stuck.response("GET").await {
+            ensure!(
                 res.status == 503,
                 "the abandoned request was answered {} (expected 503 or a closed connection)",
                 res.status
-            ),
-            Err(_) => {} // the connection ended: also an answer
+            );
         }
         Ok(())
     })

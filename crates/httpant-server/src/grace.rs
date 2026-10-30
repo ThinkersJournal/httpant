@@ -48,7 +48,7 @@ impl Grace {
         self.force.send_replace(true);
     }
 
-    /// Wrap `svc` so that [`Grace::force`] ends the requests it is running.
+    /// Wrap `svc` so that the force switch ends the requests it is running.
     pub fn wrap(&self, svc: BoxService) -> BoxService {
         let force = Arc::clone(&self.force);
         BoxService::new(tower::service_fn(move |req: Request| {
