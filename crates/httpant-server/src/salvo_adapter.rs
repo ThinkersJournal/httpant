@@ -57,13 +57,16 @@ impl ServerAdapter for SalvoAdapter {
                 let serving = server.serve(Service::new(router));
                 tokio::pin!(serving);
                 tokio::select! {
-                    _ = &mut serving => {}
+                    _ = &mut serving => { eprintln!("DBG salvo: serve returned by itself"); }
                     _ = stopped => {
                         // Graceful: stop accepting, finish requests in flight, close idle connections, then return.
+                        eprintln!("DBG salvo: stop requested, in_flight={}", in_flight.count.load(Ordering::Acquire));
                         handle.stop_graceful(None);
                         serving.await;
+                        eprintln!("DBG salvo: serve returned after stop, in_flight={}", in_flight.count.load(Ordering::Acquire));
                         // salvo's own wait counts connections; the contract counts requests, so wait for those too.
                         in_flight.drained().await;
+                        eprintln!("DBG salvo: drained");
                     }
                 }
             });
