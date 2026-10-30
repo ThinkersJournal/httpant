@@ -13,6 +13,7 @@ rewrites it. Each adapter's `capabilities()` is compared with the measurement by
 | actix-web | yes | yes | yes | no | 2097152 |
 | poem | yes | yes | yes | no | 2097152 |
 | salvo | yes | yes | yes | no | 2097152 |
+| warp | yes | yes | yes | no | 2097152 |
 <!-- matrix:end -->
 
 Client adapters, measured by the client cases against a raw-TCP peer (`client_suite.rs`):

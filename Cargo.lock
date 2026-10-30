@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-client"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "httpant-core",
  "hyper",
@@ -663,7 +663,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-conformance"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "bytes",
  "futures-util",
@@ -680,7 +680,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-core"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "bytes",
  "futures-util",
@@ -694,10 +694,11 @@ dependencies = [
 
 [[package]]
 name = "httpant-server"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "actix-web",
  "axum",
+ "bytes",
  "futures-util",
  "http-body",
  "http-body-util",
@@ -709,6 +710,7 @@ dependencies = [
  "salvo_core",
  "tokio",
  "tower",
+ "warp",
 ]
 
 [[package]]
@@ -960,6 +962,16 @@ name = "mime-infer"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2b2c04a62545765af6216b15a02e33a2a26a8b969fc4b220e46c4e09e1210dc"
+dependencies = [
+ "mime",
+ "unicase",
+]
+
+[[package]]
+name = "mime_guess"
+version = "2.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7c44f8e672c00fe5308fa235f821cb4198414e1c77935c1ab6948d3fd78550e"
 dependencies = [
  "mime",
  "unicase",
@@ -1348,6 +1360,12 @@ dependencies = [
  "salvo-serde-util",
  "syn 3.0.9",
 ]
+
+[[package]]
+name = "scoped-tls"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
 
 [[package]]
 name = "scopeguard"
@@ -1814,6 +1832,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec4cdd0dd910afe868b7ef477227d8d538b46b3075031afee8a9f2acb0a2ed0b"
 dependencies = [
  "try-lock",
+]
+
+[[package]]
+name = "warp"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0a808122a8a77eecdabaefd88ddb1913c4be5ea1465399f63ba64c7aa705fea"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "headers",
+ "http 1.5.0",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "log",
+ "mime",
+ "mime_guess",
+ "percent-encoding",
+ "pin-project",
+ "scoped-tls",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "tokio",
+ "tokio-util",
+ "tower-service",
+ "tracing",
 ]
 
 [[package]]

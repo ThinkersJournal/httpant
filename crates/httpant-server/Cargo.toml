@@ -12,6 +12,7 @@ description = "HTTPAnt server half: the Server builder, the ServerAdapter trait 
 axum = ["dep:axum"]
 actix-web = ["dep:actix-web", "dep:futures-util", "dep:http-body", "dep:http-body-util"]
 salvo = ["dep:salvo_core", "dep:futures-util", "dep:http-body", "dep:http-body-util"]
+warp = ["dep:warp", "dep:bytes", "dep:futures-util", "dep:http-body", "dep:http-body-util"]
 poem = ["dep:poem", "dep:futures-util", "dep:http-body", "dep:http-body-util"]
 
 [dependencies]
@@ -26,6 +27,8 @@ futures-util = { workspace = true, optional = true }
 http-body = { workspace = true, optional = true }
 http-body-util = { workspace = true, optional = true }
 poem = { workspace = true, optional = true, features = ["server"] }
+warp = { workspace = true, optional = true, features = ["server"] }
+bytes = { workspace = true, optional = true }
 salvo_core = { workspace = true, optional = true, features = ["server", "server-handle", "http1"] }
 
 [dev-dependencies]
