@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt adapter conformance suite (design `docs/HTTPANT-DESIGN.md`, section 6).
 //!
-//! - [`CASES`]: sixteen cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
+//! - [`CASES`]: seventeen cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
 //!   minimal HTTP/1.1 client. The client is deliberately not HTTPAnt, hyper or any adapter, so a defect cannot hide on both ends of a test.
 //! - Every case lists the known-bad [`Mutant`]s it must fail on. [`check_case`] demands both halves: the reference passes **and** every mutant
 //!   fails. A case that passes on its mutant is itself a failing test.
 //! - Cases 1-7 are the old crate's defects restated; cases 8-12 (streaming, shutdown, keep-alive, concurrency, HEAD) need a live connection
-//!   and are in `live`; cases 13 (path encoding), 14 (limits), 15 (shutdown grace) and 16 (edge origin) are HTTPAnt's own rules. [`measure`] turns three of them into the capability matrix (`docs/CAPABILITY-MATRIX.md`).
+//!   and are in `live`; cases 13 (path encoding), 14 (limits), 15 (shutdown grace) 16 (edge origin) and 17 (TLS termination) are HTTPAnt's own rules. [`measure`] turns three of them into the capability matrix (`docs/CAPABILITY-MATRIX.md`).
 //!
 //! A new adapter is tested by implementing [`Subject`] for it (or wrapping it in [`AdapterSubject`]) and calling [`run_suite`].
 
@@ -17,6 +17,7 @@ mod live;
 mod mutants;
 pub mod raw;
 mod subject;
+mod tls_case;
 
 use httpant_core::BoxFuture;
 
@@ -57,7 +58,7 @@ impl std::fmt::Debug for Case {
 }
 
 /// The sixteen cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
-pub const CASES: [Case; 16] = [
+pub const CASES: [Case; 17] = [
     Case {
         number: 1,
         id: "method-fidelity",
@@ -179,6 +180,13 @@ pub const CASES: [Case; 16] = [
         mutants: &[Mutant::TrustAnyPeer, Mutant::IgnoreTrustedProxies],
         run: live::edge_origin,
     },
+    Case {
+        number: 17,
+        id: "tls-terminate",
+        requirement: "an adapter that declares `tls: Yes` serves HTTPS on TLS 1.3 and 1.2 with the certificate it was given and reports the request as https, and a cleartext client gets no HTTP answer; one that declares `tls: No` refuses to start with a TLS acceptor, so TLS asked for is never served in clear",
+        mutants: &[Mutant::ServeTlsInClear],
+        run: tls_case::tls_terminate,
+    },
 ];
 
 /// Run every case against `subject`: `(case number, result)` for each.
@@ -293,6 +301,7 @@ mod tests {
     case_test!(case_14_limits, 13);
     case_test!(case_15_shutdown_grace, 14);
     case_test!(case_16_edge_origin, 15);
+    case_test!(case_17_tls_terminate, 16);
 
     #[test]
     fn client_cases_are_numbered_in_order_and_each_mutant_is_used_once() {
@@ -414,7 +423,7 @@ mod tests {
                 httpant_core::Support::Unknown => "unknown",
             };
             rows.push_str(&format!(
-                "| {} | {} | {} | {} | {} | {} |\n",
+                "| {} | {} | {} | {} | {} | {} | {} |\n",
                 subject
                     .name()
                     .trim_matches('`')
@@ -424,11 +433,12 @@ mod tests {
                 cell(m.streaming_response_bodies),
                 cell(m.graceful_shutdown),
                 cell(declared.local_handlers),
+                cell(declared.tls),
                 declared.default_body_limit,
             ));
         }
         let table = format!(
-            "| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | default body limit (bytes) |\n|---|---|---|---|---|---|\n{rows}"
+            "| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | terminates TLS | default body limit (bytes) |\n|---|---|---|---|---|---|---|\n{rows}"
         );
         let mut client_rows = String::new();
         for subject in &client_adapters() {

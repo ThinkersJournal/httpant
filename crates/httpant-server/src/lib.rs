@@ -69,6 +69,20 @@ pub const ADAPTER_IDS: &[&str] = &[
     "warp",
 ];
 
+/// The rule "TLS is only asked of an adapter that terminates it", in one place: [`Server::serve`] and the conformance suite both use it.
+/// `Err(Error::TlsNotSupported)` unless `adapter` declares [`Capabilities::tls`](httpant_core::Capabilities) `Yes`; an adapter that fails
+/// it is never started with a TLS acceptor, so it can never serve cleartext when TLS was asked for.
+#[cfg(feature = "tls")]
+pub fn require_tls(adapter: &dyn ServerAdapter) -> Result<()> {
+    if adapter.capabilities().tls == httpant_core::Support::Yes {
+        Ok(())
+    } else {
+        Err(Error::TlsNotSupported {
+            adapter: adapter.id(),
+        })
+    }
+}
+
 /// Describes routes and layers once, then runs them on an adapter chosen by id (default `hyper`).
 pub struct Server {
     adapter: Arc<dyn ServerAdapter>,
@@ -262,11 +276,7 @@ impl Server {
         let opts = match self.tls.clone() {
             None => opts,
             Some(acceptor) => {
-                if adapter.capabilities().tls != httpant_core::Support::Yes {
-                    return Err(Error::TlsNotSupported {
-                        adapter: adapter.id(),
-                    });
-                }
+                require_tls(&*adapter)?;
                 opts.tls(acceptor)
             }
         };
