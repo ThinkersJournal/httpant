@@ -11,7 +11,7 @@ publish = false
 [dependencies]
 httpant-core.workspace = true
 httpant-client.workspace = true
-httpant-server = { workspace = true, features = ["axum", "actix-web", "poem", "salvo", "warp"] }
+httpant-server = { workspace = true, features = ["axum", "actix-web", "poem", "salvo", "warp", "tls"] }
 tower.workspace = true
 tokio = { workspace = true, features = ["net", "io-util", "time", "rt", "sync"] }
 bytes.workspace = true

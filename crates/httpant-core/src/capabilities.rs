@@ -25,6 +25,8 @@ pub struct Capabilities {
     pub graceful_shutdown: Support,
     /// Accepts handlers that are not `Send` (actix-web).
     pub local_handlers: Support,
+    /// Terminates TLS on the listener using a certificate source (feature `tls`). An adapter that says `No` is refused a TLS request at start-up, never served in clear.
+    pub tls: Support,
     /// The body limit the adapter applies unless told otherwise, in bytes.
     pub default_body_limit: usize,
 }
@@ -36,6 +38,7 @@ impl Default for Capabilities {
             streaming_response_bodies: Support::Unknown,
             graceful_shutdown: Support::Unknown,
             local_handlers: Support::Unknown,
+            tls: Support::Unknown,
             default_body_limit: DEFAULT_BODY_LIMIT,
         }
     }

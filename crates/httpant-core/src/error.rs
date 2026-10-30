@@ -65,6 +65,17 @@ pub enum Error {
         /// The client adapter id.
         adapter: &'static str,
     },
+    /// TLS was asked for on an adapter that does not terminate it; the server does not start, it never serves in clear instead.
+    #[error(
+        "the `{adapter}` adapter cannot terminate TLS: use the hyper or axum adapter, or terminate TLS at an edge and trust its proxy"
+    )]
+    TlsNotSupported {
+        /// The adapter id.
+        adapter: &'static str,
+    },
+    /// TLS is configured wrongly (bad certificate or key, or the `tls` feature is off).
+    #[error("TLS configuration: {0}")]
+    Tls(String),
     /// A client request did not finish before its timeout.
     #[error("request timed out after {0:?}: raise the timeout or check the peer")]
     Timeout(std::time::Duration),
@@ -84,7 +95,9 @@ impl Error {
             | Error::UnknownAdapter { .. }
             | Error::InvalidUrl { .. }
             | Error::InvalidHeader { .. }
-            | Error::UnsupportedScheme { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            | Error::UnsupportedScheme { .. }
+            | Error::TlsNotSupported { .. }
+            | Error::Tls(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::Timeout(_) => StatusCode::GATEWAY_TIMEOUT,
             Error::Request(_) => StatusCode::BAD_GATEWAY,
         }

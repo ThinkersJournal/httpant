@@ -13,6 +13,7 @@ axum = ["dep:axum"]
 actix-web = ["dep:actix-web", "dep:futures-util", "dep:http-body-util"]
 salvo = ["dep:salvo_core", "dep:futures-util", "dep:http-body-util"]
 warp = ["dep:warp", "dep:bytes", "dep:futures-util", "dep:http-body-util"]
+tls = ["dep:rustls", "dep:tokio-rustls"]
 poem = ["dep:poem", "dep:futures-util", "dep:http-body-util"]
 
 [dependencies]
@@ -30,12 +31,17 @@ poem = { workspace = true, optional = true, features = ["server"] }
 warp = { workspace = true, optional = true, features = ["server"] }
 bytes = { workspace = true, optional = true }
 salvo_core = { workspace = true, optional = true, features = ["server", "server-handle", "http1"] }
+rustls = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
 
 [dev-dependencies]
 httpant-client.workspace = true
 futures-util.workspace = true
 http-body-util.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
 
 # Examples are built and run in CI; `test = true` also runs the unit tests inside them.
 [[example]]

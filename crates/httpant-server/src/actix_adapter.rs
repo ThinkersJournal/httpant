@@ -41,6 +41,8 @@ impl ServerAdapter for ActixAdapter {
         c.graceful_shutdown = Support::Yes;
         // Handlers are `Send` futures; a handler written against actix's `!Send` types is the later `LocalHandler` capability.
         c.local_handlers = Support::No;
+        // HTTPAnt terminates TLS below the adapters only where the web library accepts an already-handshaken stream; this one is edge mode only.
+        c.tls = Support::No;
         c
     }
 
