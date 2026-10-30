@@ -815,6 +815,7 @@ dependencies = [
  "tokio-rustls",
  "tower",
  "warp",
+ "x509-parser",
 ]
 
 [[package]]

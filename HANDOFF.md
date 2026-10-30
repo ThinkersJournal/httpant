@@ -12,7 +12,7 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 
 ## State
 - Work list: `ROADMAP.md` (the repo's own, PM's order). Merged: slices 1a-7, percent-decoding (#17, 0.2.0), limits (#18, 0.3.0), shutdown grace (#19, 0.4.0).
-- **Open PR:** two. ACME challenge prefix (branch `feat/acme-challenge`, worktree `C:\Projects\httpant-wt-acme`, 0.5.5 placeholder) and TLS read-back (#24, branch `feat/tls-readback`, worktree `C:\Projects\httpant-wt-readback`, 0.5.4 placeholder). Merged: TLS first half (#21), sweep (#22, #23).
+- **Open PR:** #25 ACME challenge prefix (branch `feat/acme-challenge`, worktree `C:\Projects\httpant-wt-acme`, 0.5.5 placeholder). Merged: TLS first half (#21), sweep (#22, #23), read-back (#24, 0.5.4).
 - **Lesson (salvo):** Windows green is not Linux green. Wait for the ubuntu job before calling an adapter or a limit done.
 - **Option A (Tower core, thin adapters) is PROVISIONAL**: PM told me to proceed 2026-10-29 while CireSnave decides A/B/C.
 - Rules decided: no trailing-slash normalisation (design section 3); path captures decoded, literals raw (CHANGELOG 0.2.0); limits enforced by HTTPAnt on the request (0.3.0); shutdown grace enforced by a Tower wrapper (0.4.0); forwarded headers believed only from configured trusted proxies (0.5.0).
@@ -20,11 +20,11 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 - Publish is the PM's call: the sweep (`docs/PATENT-SWEEP.md`) is accepted as honest and thin; the PM reads what is already on crates.io first.
 
 ## Next (in order)
-1. After each PR merges: remove its worktree + branch; renumber conflicts (CHANGELOG, Cargo) are expected between the two. Then ROADMAP row 4 rest: `acme-tls/1` (13), 80->443 (18), events (23), conformance case. Probe actix/poem/salvo/warp for real TLS ability (their `No` is recalled, not run). Then row 5 (benchmarks); the flaky-suite row needs evidence.
+1. After #25 merges: remove its worktree + branch. Then ROADMAP row 4 rest: `acme-tls/1` (13), 80->443 (18), events (23), conformance case. Probe actix/poem/salvo/warp for real TLS ability (their `No` is recalled, not run). Then row 5 (benchmarks); the flaky-suite row needs evidence.
 
 ## Standing constraints
 - `CARGO_BUILD_JOBS=2`, one build at a time. Primary checkout stays on `main`; every branch in `C:\Projects\httpant-wt-<topic>`.
 - No `#[ignore]`. Never weaken `deny.toml`. Every pushed change bumps version + CHANGELOG (placeholder). Cargo.lock must match the version
   (`cargo metadata --locked --offline`).
-- **No publish until `docs/PATENT-SWEEP.md` is a real sweep** (it says NOT YET PERFORMED). actix-tower is not a hard dependency without a decision.
+- **Publish is the PM's decision** (the sweep is accepted as honest and thin). actix-tower is not a hard dependency without a decision.
 - Stale files to fix when touched: `CONTRIBUTING.md`, `.github/copilot-instructions.md` still describe the old crate.

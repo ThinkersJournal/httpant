@@ -45,8 +45,8 @@ pub use poem_adapter::PoemAdapter;
 pub use salvo_adapter::SalvoAdapter;
 #[cfg(feature = "tls")]
 pub use tls::{
-    CertSource, CertSourceError, DEFAULT_HANDSHAKE_TIMEOUT, FixedCert, ServerCert, TlsAcceptor,
-    TlsConnection,
+    CertSource, CertSourceError, DEFAULT_HANDSHAKE_TIMEOUT, FixedCert, ServedCert, ServerCert,
+    TlsAcceptor, TlsConnection, read_back,
 };
 use tokio::net::ToSocketAddrs;
 #[cfg(feature = "warp")]
