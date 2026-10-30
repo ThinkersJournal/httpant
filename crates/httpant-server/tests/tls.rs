@@ -18,10 +18,15 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 
+/// Every adapter that terminates TLS (declares `tls: Yes`); actix-web and warp refuse it, which `an_adapter_that_cannot_terminate_tls...` covers.
 const ADAPTERS: &[&str] = &[
     "hyper",
     #[cfg(feature = "axum")]
     "axum",
+    #[cfg(feature = "poem")]
+    "poem",
+    #[cfg(feature = "salvo")]
+    "salvo",
 ];
 
 struct Made {

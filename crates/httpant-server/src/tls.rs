@@ -183,7 +183,10 @@ impl TlsAcceptor {
 
     /// Run the handshake on `tcp`. Errors (timeout, unknown name, source failure, protocol error) end only this connection, and are reported to
     /// the audit sink if there is one.
-    pub async fn accept(&self, tcp: TcpStream) -> io::Result<TlsStream<TcpStream>> {
+    pub async fn accept<IO>(&self, tcp: IO) -> io::Result<TlsStream<IO>>
+    where
+        IO: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+    {
         // The name the client sent, once its hello has been read: kept outside the handshake so a timeout can still say which name it was.
         let hello_name = std::sync::Mutex::new(None::<Option<String>>);
         let handshake = async {

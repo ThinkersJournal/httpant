@@ -33,8 +33,12 @@ impl ServerAdapter for PoemAdapter {
         c.graceful_shutdown = Support::Yes;
         // Not measurable by this suite: a handler that is not `Send` cannot be written against the `Send` service contract.
         c.local_handlers = Support::No;
-        // HTTPAnt terminates TLS below the adapters only where the web library accepts an already-handshaken stream; this one is edge mode only.
-        c.tls = Support::No;
+        // poem takes any `Acceptor`, so HTTPAnt hands it streams that have already been through the TLS handshake (`poem_tls.rs`); proved by case 17.
+        c.tls = if cfg!(feature = "tls") {
+            Support::Yes
+        } else {
+            Support::No
+        };
         c
     }
 
@@ -55,6 +59,22 @@ impl ServerAdapter for PoemAdapter {
                 async move { Ok::<_, Infallible>(handle(svc, req).await) }
             });
             let (stop, stopped) = oneshot::channel::<()>();
+            #[cfg(feature = "tls")]
+            if let Some(tls) = opts.tls.clone() {
+                let acceptor = crate::poem_tls::TlsPoemAcceptor::new(acceptor, tls);
+                let task = tokio::spawn(async move {
+                    let _ = poem::Server::new_with_acceptor(acceptor)
+                        .run_with_graceful_shutdown(
+                            endpoint,
+                            async move {
+                                let _ = stopped.await;
+                            },
+                            None,
+                        )
+                        .await;
+                });
+                return Ok(RunningServer::new(addr, stop, task, grace));
+            }
             let task = tokio::spawn(async move {
                 let _ = poem::Server::new_with_acceptor(acceptor)
                     .run_with_graceful_shutdown(
@@ -96,6 +116,10 @@ async fn handle(svc: BoxService, mut req: poem::Request) -> poem::Response {
     let mut request: Request = request;
     if let Some(peer) = peer {
         request.extensions_mut().insert(crate::PeerAddr(peer));
+    }
+    #[cfg(feature = "tls")]
+    if req.scheme() == &poem::http::uri::Scheme::HTTPS {
+        request.extensions_mut().insert(crate::TlsConnection);
     }
     let res = svc
         .oneshot(request)

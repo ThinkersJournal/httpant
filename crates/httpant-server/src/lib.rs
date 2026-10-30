@@ -14,9 +14,13 @@ mod hyper_adapter;
 mod limits;
 #[cfg(feature = "poem")]
 mod poem_adapter;
+#[cfg(all(feature = "poem", feature = "tls"))]
+mod poem_tls;
 mod redirect;
 #[cfg(feature = "salvo")]
 mod salvo_adapter;
+#[cfg(all(feature = "salvo", feature = "tls"))]
+mod salvo_tls;
 #[cfg(feature = "tls")]
 mod tls;
 #[cfg(feature = "tls")]
