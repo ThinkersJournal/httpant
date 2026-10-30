@@ -6,14 +6,14 @@ rewrites it. Each adapter's `capabilities()` is compared with the measurement by
 `yes` that the suite cannot reproduce fails the build.
 
 <!-- matrix:start -->
-| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | default body limit (bytes) |
-|---|---|---|---|---|---|
-| hyper | yes | yes | yes | no | 2097152 |
-| axum | yes | yes | yes | no | 2097152 |
-| actix-web | yes | yes | yes | no | 2097152 |
-| poem | yes | yes | yes | no | 2097152 |
-| salvo | yes | yes | yes | no | 2097152 |
-| warp | yes | yes | yes | no | 2097152 |
+| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | terminates TLS | default body limit (bytes) |
+|---|---|---|---|---|---|---|
+| hyper | yes | yes | yes | no | yes | 2097152 |
+| axum | yes | yes | yes | no | yes | 2097152 |
+| actix-web | yes | yes | yes | no | no | 2097152 |
+| poem | yes | yes | yes | no | yes | 2097152 |
+| salvo | yes | yes | yes | no | yes | 2097152 |
+| warp | yes | yes | yes | no | no | 2097152 |
 <!-- matrix:end -->
 
 Client adapters, measured by the client cases against a raw-TCP peer (`client_suite.rs`):
@@ -30,6 +30,11 @@ Client adapters, measured by the client cases against a raw-TCP peer (`client_su
   producing (response) or sending (request); gated by handler signals, not by sleeps.
 - *graceful shutdown*: case 9. After shutdown is requested: a request in flight completes, an idle keep-alive connection is closed, new
   connections are refused, and `shutdown()` returns only after the request completed. There is no grace period yet.
+- *terminates TLS*: declared, and held to its declaration by case 17. For `yes` the case proves HTTPS on TLS 1.3 and 1.2 with the given
+  certificate, the request reported as `https`, and a cleartext client getting no answer; for `no` it requires a named refusal to start with
+  a TLS acceptor, so TLS that was asked for is never served in clear. The two `no` rows were probed (`docs/TLS-ADAPTER-PROBES.md`): warp's
+  `Accept` trait is private (run: it does not compile from outside), and actix-web has no acceptor hook (read, not run), so both stay edge
+  mode only.
 - *non-`Send` handlers*: declared, not measured. The service contract is `Send`; actix-web (thread-per-core, `!Send` handlers) is the adapter this
   column is for (`docs/ACTIX-ADAPTER-NOTES.md`).
 - Cases 10 (keep-alive, `Connection: close`, `Expect: 100-continue`), 11 (concurrency) and 12 (HEAD) are required of every adapter; they have no

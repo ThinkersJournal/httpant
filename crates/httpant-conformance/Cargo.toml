@@ -20,6 +20,9 @@ http-body.workspace = true
 http-body-util.workspace = true
 hyper = { workspace = true, features = ["server", "http1"] }
 hyper-util = { workspace = true, features = ["tokio"] }
+rustls.workspace = true
+tokio-rustls.workspace = true
+rcgen.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "net", "io-util", "time"] }

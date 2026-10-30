@@ -775,7 +775,10 @@ dependencies = [
  "httpant-server",
  "hyper",
  "hyper-util",
+ "rcgen",
+ "rustls",
  "tokio",
+ "tokio-rustls",
  "tower",
 ]
 
