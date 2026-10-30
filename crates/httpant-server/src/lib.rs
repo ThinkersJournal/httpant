@@ -2,6 +2,8 @@
 //! HTTPAnt server half (design `docs/HTTPANT-DESIGN.md`, section 4): the [`Server`] builder, the [`ServerAdapter`] trait, and the
 //! reference [`HyperAdapter`]. Other adapters arrive one slice at a time, each only after it passes the conformance suite.
 
+#[cfg(feature = "actix-web")]
+mod actix_adapter;
 mod adapter;
 #[cfg(feature = "axum")]
 mod axum_adapter;
@@ -9,6 +11,8 @@ mod hyper_adapter;
 
 use std::sync::Arc;
 
+#[cfg(feature = "actix-web")]
+pub use actix_adapter::ActixAdapter;
 pub use adapter::{RunningServer, ServeOptions, ServerAdapter};
 #[cfg(feature = "axum")]
 pub use axum_adapter::AxumAdapter;
@@ -19,11 +23,13 @@ pub use hyper_adapter::HyperAdapter;
 use tokio::net::ToSocketAddrs;
 
 /// The ids of the adapters compiled into this build.
-#[cfg(feature = "axum")]
-pub const ADAPTER_IDS: &[&str] = &["hyper", "axum"];
-/// The ids of the adapters compiled into this build.
-#[cfg(not(feature = "axum"))]
-pub const ADAPTER_IDS: &[&str] = &["hyper"];
+pub const ADAPTER_IDS: &[&str] = &[
+    "hyper",
+    #[cfg(feature = "axum")]
+    "axum",
+    #[cfg(feature = "actix-web")]
+    "actix-web",
+];
 
 /// Describes routes and layers once, then runs them on an adapter chosen by id (default `hyper`).
 pub struct Server {
@@ -56,6 +62,10 @@ impl Server {
             "axum" => Ok(Self::with_adapter_impl(AxumAdapter)),
             #[cfg(not(feature = "axum"))]
             "axum" => Err(Error::AdapterNotCompiledIn { id: id.to_owned() }),
+            #[cfg(feature = "actix-web")]
+            "actix-web" => Ok(Self::with_adapter_impl(ActixAdapter)),
+            #[cfg(not(feature = "actix-web"))]
+            "actix-web" => Err(Error::AdapterNotCompiledIn { id: id.to_owned() }),
             _ => Err(Error::UnknownAdapter {
                 id: id.to_owned(),
                 available: ADAPTER_IDS.to_vec(),

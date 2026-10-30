@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-10-30
+
+- Slice 4: actix-web adapter (`ActixAdapter`, feature `actix-web` of `httpant-server`, `Server::with_adapter("actix-web")`), actix-web 4.18 with default features off. Option C of `docs/ACTIX-ADAPTER-NOTES.md`: no Tower middleware inside actix and no `actix-tower`. actix's workers run on a thread of their own; the `!Send` request payload is moved chunk by chunk, with back-pressure, into a `Send` body by a pump task on the worker, so nothing is buffered. The declared `Content-Length` is the body's size hint, so an over-limit body is refused on its head (case 5 found the first draft waited for bytes that never came). Conformance cases 1-12 pass on hyper, axum and actix-web; the matrix gains the row. `non-Send handlers` stays `no` (the `LocalHandler` capability is not built). Not published.
+
 ## [0.1.4] - 2026-10-30
 
 - Slice 3: the client half. New crate `httpant-client`: `Client` (`get`/`post`/`put`/`delete`/`head`/`request`, repeatable raw-byte headers, byte or streaming bodies, `timeout`), the `ClientAdapter` trait, and the hyper-util reference adapter (plain `http://`; `https://` is a named `UnsupportedScheme` error until the TLS hook exists; redirects are returned, not followed, and declared so). Response bodies are read only with a limit (`bytes`/`text` use the 2 MiB default, `*_limited` take one). `httpant-core` gains `ClientCapabilities` and the errors `InvalidUrl`, `InvalidHeader`, `UnsupportedScheme`, `Timeout`, `Request`.
