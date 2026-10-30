@@ -36,5 +36,6 @@ conformance case is the guard: an adapter that starts claiming `tls: Yes` is hel
    library's own TLS, so the behaviour is the same on each (case 17).
 2. *A TLS library choice inside an adapter that the trait must not contradict?* None is used: HTTPAnt's acceptor is rustls (ring) below the
    adapters. actix-web's own rustls and warp's stub are not used.
-3. *Can `acme-tls/1` routing be done by every adapter?* Not tested here. Because the handshake is below the adapters on the four that
-   terminate TLS, it can be done once in HTTPAnt's acceptor and does not need the libraries; actix-web and warp do not terminate TLS at all.
+3. *Can `acme-tls/1` routing be done by every adapter?* Yes on the four that terminate TLS, and it is done once, in HTTPAnt's acceptor
+   (0.5.11, `CertSource::acme_tls_cert`), so it does not need the libraries: `tests/tls.rs` runs it on hyper, axum, poem and salvo. actix-web
+   and warp do not terminate TLS, so a validation on port 443 reaches whatever edge does.

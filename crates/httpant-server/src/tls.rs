@@ -211,18 +211,17 @@ impl TlsAcceptor {
                 .client_hello()
                 .alpn()
                 .is_some_and(|mut p| p.any(|p| p == ACME_TLS_ALPN));
-            if offers_acme {
-                if let Some(challenge) = self.source.acme_tls_cert(name.as_deref()).await {
-                    let config = config_for(&challenge, ACME_TLS_ALPN)
-                        .map_err(|e| (RefusalReason::Protocol, e))?;
-                    let mut stream = start
-                        .into_stream(Arc::new(config))
-                        .await
-                        .map_err(|e| (RefusalReason::Protocol, e))?;
-                    // The validator has seen the certificate by now; there is nothing to serve on this connection.
-                    let _ = tokio::io::AsyncWriteExt::shutdown(&mut stream).await;
-                    return Ok(Done::Challenge(name));
-                }
+            if offers_acme && let Some(challenge) = self.source.acme_tls_cert(name.as_deref()).await
+            {
+                let config = config_for(&challenge, ACME_TLS_ALPN)
+                    .map_err(|e| (RefusalReason::Protocol, e))?;
+                let mut stream = start
+                    .into_stream(Arc::new(config))
+                    .await
+                    .map_err(|e| (RefusalReason::Protocol, e))?;
+                // The validator has seen the certificate by now; there is nothing to serve on this connection.
+                let _ = tokio::io::AsyncWriteExt::shutdown(&mut stream).await;
+                return Ok(None);
             }
             let cert = match self.source.cert_for(name.as_deref()).await {
                 Ok(Some(cert)) => cert,
@@ -245,7 +244,7 @@ impl TlsAcceptor {
                     serial: tls_audit::serial_hex(cert.leaf_der()),
                 });
             }
-            Ok(Done::Stream(stream))
+            Ok(Some(stream))
         };
         let refused = |reason: RefusalReason| {
             let name = hello_name
@@ -259,8 +258,14 @@ impl TlsAcceptor {
             });
         };
         match tokio::time::timeout(self.handshake_timeout, handshake).await {
-            Ok(Ok(Done::Stream(stream))) => Ok(stream),
-            Ok(Ok(Done::Challenge(name))) => {
+            Ok(Ok(Some(stream))) => Ok(stream),
+            Ok(Ok(None)) => {
+                // A TLS-ALPN-01 validation connection, served and closed in the handshake; `hello_name` holds the name it asked for.
+                let name = hello_name
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone()
+                    .flatten();
                 self.emit(TlsEvent::AcmeChallengeServed {
                     server_name: name.as_deref().map(tls_audit::clean_name),
                 });
@@ -284,14 +289,6 @@ impl TlsAcceptor {
 
 /// The ALPN protocol of a TLS-ALPN-01 validation connection (RFC 8737).
 const ACME_TLS_ALPN: &[u8] = b"acme-tls/1";
-
-/// How a handshake that completed ended.
-enum Done<IO> {
-    /// An ordinary connection, to be served.
-    Stream(TlsStream<IO>),
-    /// A TLS-ALPN-01 validation connection: served and closed here.
-    Challenge(Option<String>),
-}
 
 fn config_for(cert: &ServerCert, alpn: &[u8]) -> io::Result<ServerConfig> {
     let mut config = ServerConfig::builder_with_provider(Arc::new(provider::default_provider()))
