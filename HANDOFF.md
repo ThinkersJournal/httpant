@@ -11,13 +11,14 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 `docs/BENCHMARKS.md`, `docs/ACTIX-ADAPTER-NOTES.md`.
 
 ## State
-- Merged: slices 1a-5 (#7-#13; 4 = actix-web 0.1.5, option C, no actix-tower; 5 = poem 0.1.6).
-- **Slice 6 PR open** (branch `feat/salvo-adapter`, worktree `C:\Projects\httpant-wt-salvo`, 0.1.7 placeholder): salvo adapter, cases 1-12 pass on hyper/axum/actix-web/poem/salvo. Check with `gh pr view`.
+- Merged: slices 1a-6 and #15 (#7-#15): adapters hyper, axum, actix-web (option C, no actix-tower), poem, salvo; client half; SEC-002 allow.
+- **Slice 7 PR open** (branch `feat/warp-adapter`, worktree `C:\Projects\httpant-wt-warp`, 0.1.9 placeholder): warp adapter, cases 1-12 pass; rocket NOT built (source reading: rocket 0.5.2 rejects extension methods with 400; recorded in design section 8). Check with `gh pr view`.
+- **Lesson (salvo):** Windows green is not Linux green. A framework that holds its listener open while draining passes on Windows and hangs a probe connect on Linux; only CI shows it. Wait for the ubuntu job before calling an adapter done.
 - **Option A (Tower core, thin adapters) is PROVISIONAL**: PM told me to proceed 2026-10-29 while CireSnave decides A/B/C.
 - Trailing slash rule: no normalisation (decided, design section 3).
 
 ## Next (in order)
-1. After the salvo PR merges: remove its worktree + branch (CLAUDE.md section 3). Then rocket, warp, one at a time, only if they pass.
+1. After the warp PR merges: remove its worktree + branch (CLAUDE.md section 3). Roadmap's adapter list is then done (rocket excluded, with reason); next is a PM decision: TLS acceptor hook with WebHostAnt, benchmark harness, or the open design points.
    Read ConfigurAnt's API before wiring settings (design section 10; UNVERIFIED).
 2. Open design points: percent-decoding of path params (raw today), request header/body limits in `ServeOptions`, Path/Query extractors,
    a shutdown grace period, a mutant for `Connection: close` / `Expect: 100-continue`, `LocalHandler` capability for actix, TLS acceptor hook.

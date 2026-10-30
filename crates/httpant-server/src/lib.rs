@@ -12,6 +12,8 @@ mod hyper_adapter;
 mod poem_adapter;
 #[cfg(feature = "salvo")]
 mod salvo_adapter;
+#[cfg(feature = "warp")]
+mod warp_adapter;
 
 use std::sync::Arc;
 
@@ -29,6 +31,8 @@ pub use poem_adapter::PoemAdapter;
 #[cfg(feature = "salvo")]
 pub use salvo_adapter::SalvoAdapter;
 use tokio::net::ToSocketAddrs;
+#[cfg(feature = "warp")]
+pub use warp_adapter::WarpAdapter;
 
 /// The ids of the adapters compiled into this build.
 pub const ADAPTER_IDS: &[&str] = &[
@@ -41,6 +45,8 @@ pub const ADAPTER_IDS: &[&str] = &[
     "poem",
     #[cfg(feature = "salvo")]
     "salvo",
+    #[cfg(feature = "warp")]
+    "warp",
 ];
 
 /// Describes routes and layers once, then runs them on an adapter chosen by id (default `hyper`).
@@ -86,6 +92,10 @@ impl Server {
             "salvo" => Ok(Self::with_adapter_impl(SalvoAdapter)),
             #[cfg(not(feature = "salvo"))]
             "salvo" => Err(Error::AdapterNotCompiledIn { id: id.to_owned() }),
+            #[cfg(feature = "warp")]
+            "warp" => Ok(Self::with_adapter_impl(WarpAdapter)),
+            #[cfg(not(feature = "warp"))]
+            "warp" => Err(Error::AdapterNotCompiledIn { id: id.to_owned() }),
             _ => Err(Error::UnknownAdapter {
                 id: id.to_owned(),
                 available: ADAPTER_IDS.to_vec(),

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-10-30
+
+- Slice 7: warp adapter (`WarpAdapter`, feature `warp` of `httpant-server`, `Server::with_adapter("warp")`), warp 0.4 with default features off. One filter matches every request and hands it to the boxed service, so routing and error mapping are HTTPAnt's. Request bodies stream through (declared `Content-Length` is the size hint); response bodies stream through a one-frame channel (warp wants a `Sync` stream, `Body` is not); a body of known length keeps its `Content-Length`. warp closes its listener when it begins draining and waits for connections through hyper-util's `GracefulShutdown`. Conformance cases 1-12 pass on hyper, axum, actix-web, poem, salvo and warp; the matrix gains the row.
+- **rocket is not built, on a source reading:** rocket 0.5.2 knows nine request methods (`rocket_http::Method`) and `Request::from_hyp` turns any other into a `BadMethod` error, so a `PROPFIND` request never reaches a route (rocket answers 400). Conformance case 1 requires extension methods, so the adapter could not pass; its source carries the comment "TODO: Allow made-up methods?". This is a reading of rocket's source, not a run; nothing was built. Recorded in the design note's section 8. Not published.
+
 ## [0.1.8] - 2026-10-30
 
 - Portfolio check: a line-scoped `[[allow]]` for SEC-002 on `src/types/tests.rs` in `.coderipper.toml`, with its reason. The four gitleaks hits are in the history of a file deleted in 0.1.0 and are the public RFC 6455 section 1.3 WebSocket handshake sample (key and derived accept value) used as a test vector, not secrets. No code change. Not published.
