@@ -47,6 +47,8 @@ pub struct Setup {
     pub grace: Option<Duration>,
     /// Peers trusted to forward the client's address and scheme.
     pub trusted_proxies: TrustedProxies,
+    /// Terminate TLS with this acceptor (case 17).
+    pub tls: Option<httpant_server::TlsAcceptor>,
 }
 
 impl Default for Setup {
@@ -54,12 +56,17 @@ impl Default for Setup {
         Self {
             grace: Some(LONG_GRACE),
             trusted_proxies: TrustedProxies::none(),
+            tls: None,
         }
     }
 }
 
 fn options(listener: std::net::TcpListener, setup: Setup) -> ServeOptions {
     let opts = ServeOptions::new(listener).trusted_proxies(setup.trusted_proxies);
+    let opts = match setup.tls {
+        Some(tls) => opts.tls(tls),
+        None => opts,
+    };
     match setup.grace {
         Some(period) => opts.shutdown_grace(period),
         None => opts.no_shutdown_grace(),
@@ -84,6 +91,10 @@ impl<A: ServerAdapter> Subject for AdapterSubject<A> {
 
     fn start_with(&self, app: App, setup: Setup) -> BoxFuture<'_, Result<RunningServer>> {
         Box::pin(async move {
+            // The rule `Server` applies: TLS is never started on an adapter that does not declare it.
+            if setup.tls.is_some() {
+                httpant_server::require_tls(&self.0)?;
+            }
             let svc = apply_layers(app.router.into_service(), app.layers);
             self.0.serve(svc, options(free_listener()?, setup)).await
         })
@@ -128,6 +139,8 @@ impl Subject for MutantSubject {
             }
             // Believes nobody, the proxy it was told to trust included.
             Mutant::IgnoreTrustedProxies => setup.trusted_proxies = TrustedProxies::none(),
+            // Asked for TLS, serves cleartext.
+            Mutant::ServeTlsInClear => setup.tls = None,
             _ => {}
         }
         Box::pin(async move {

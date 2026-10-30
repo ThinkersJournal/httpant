@@ -60,6 +60,8 @@ pub enum Mutant {
     NoBodyLimit,
     /// The path is percent-decoded before routing, so an encoded `/` or `..` becomes a real separator or dot segment.
     DecodeBeforeRouting,
+    /// TLS was asked for and the listener serves cleartext HTTP.
+    ServeTlsInClear,
 }
 
 impl Mutant {
@@ -102,6 +104,7 @@ impl Mutant {
             Mutant::NoHeaderCountLimit => "no-header-count-limit",
             Mutant::NoHeaderBytesLimit => "no-header-bytes-limit",
             Mutant::NoBodyLimit => "no-body-limit",
+            Mutant::ServeTlsInClear => "serve-tls-in-clear",
         }
     }
 }
@@ -120,7 +123,8 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         | Mutant::NoUriLimit
         | Mutant::NoHeaderCountLimit
         | Mutant::NoHeaderBytesLimit
-        | Mutant::NoBodyLimit => return svc,
+        | Mutant::NoBodyLimit
+        | Mutant::ServeTlsInClear => return svc,
         Mutant::FoldMethodToGet => fold_method_to_get,
         Mutant::ClampStatus => clamp_status,
         Mutant::HashMapHeaders => hashmap_headers,
