@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-10-30
+
+- `docs/PATENT-SWEEP.md` addendum (PM ruling): the two unread patents are claim-read, 13 more queries across Google Patents and Espacenet/PatentScope/USPTO for every idea, five more patents claim-read (12 in all), and the file says exactly what the search tool could and could not do (Espacenet's own search was not usable; no classification-code search). No verdict changes. Documentation only. Not published.
+
 ## [0.5.2] - 2026-10-30
 
 - `docs/PATENT-SWEEP.md` is a real sweep of the 0.5.x line (10 ideas, 10 queries, 7 patents read claim by claim, none needs review) instead of the "not yet performed" placeholder. Documentation only. Not published.
