@@ -151,6 +151,7 @@ mutant is itself a failing test. The first seven mutants are the old crate's mea
 | 10 | HTTP/1.1 keep-alive and `Expect: 100-continue` / `Connection: close` honoured | closes after each response |
 | 11 | concurrency: 1,000 concurrent requests all answered correctly | serialises or drops |
 | 12 | `HEAD` returns the headers of `GET` and no body | sends a body |
+| 13 | a percent-encoded path reaches the handler decoded; a bad escape, non-UTF-8, an encoded `/`, backslash, NUL or dot segment is a 400; the encoded spelling of a literal is a 404 | decodes `%2F` or `%2e` before routing |
 
 Cases 8-12 are expected to expose differences between frameworks; the result is a **capability matrix** (section 8), not a hidden exception.
 A case an adapter cannot pass is recorded as `Unsupported` in its `Capabilities`, and the suite then asserts that using the feature returns the named error

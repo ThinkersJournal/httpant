@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-30
+
+- **Breaking (pre-1.0: the second number):** `PathParams::get` now returns the **percent-decoded** value; before it returned the raw text. `PathParams` is no longer a tuple struct (`PathParams(pub Vec<..>)`): use `get`, `get_raw` (the text as sent) and `iter`. Rule, decided with the router: captures are decoded segment by segment (`+` stays a plus); a capture that cannot be decoded safely is a `400` before any handler runs, with a one-line reason: a `%` not followed by two hex digits, decoded bytes that are not UTF-8, an encoded `/`, backslash or NUL, an encoded `.` or `..` segment. Literals in a route are matched **raw**: `/h%65llo` is not `/hello` (404), so a layer that looks at the raw path cannot be sidestepped by an encoded spelling.
+- Conformance case 13 `path-encoding` on every adapter (12 request targets, answers and refusals), with the mutant `decode-before-routing` (a framework that turns `%2F` and `%2e` into a real separator or dot segment before routing) it must fail on. The router's own tests were each shown to fail when their rule is removed (six mutations: no separator refusal, no dot refusal, lossy UTF-8, a bad escape kept literally, literals decoded, `+` read as a space). Not published.
+
 ## [0.1.8] - 2026-10-30
 
 - Portfolio check: a line-scoped `[[allow]]` for SEC-002 on `src/types/tests.rs` in `.coderipper.toml`, with its reason. The four gitleaks hits are in the history of a file deleted in 0.1.0 and are the public RFC 6455 section 1.3 WebSocket handshake sample (key and derived accept value) used as a test vector, not secrets. No code change. Not published.

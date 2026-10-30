@@ -27,21 +27,120 @@ struct Route {
 
 /// Parameters captured from the path (`:id`, `*rest`), placed in the request's extensions before the handler runs.
 ///
-/// Values are the raw path text: **not** percent-decoded (UNVERIFIED which rule users want; decide at review).
+/// [`get`](PathParams::get) returns the **percent-decoded** value; [`get_raw`](PathParams::get_raw) the text as it was on the wire. The router
+/// refuses (with `400`, before any handler runs) a request whose captured value cannot be decoded safely; see [`Router`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct PathParams(pub Vec<(String, String)>);
+pub struct PathParams {
+    decoded: Vec<(String, String)>,
+    raw: Vec<(String, String)>,
+}
 
 impl PathParams {
-    /// The value captured under `name`.
+    /// The percent-decoded value captured under `name`. For a `*rest` capture, segments are decoded one by one and joined with `/`.
     pub fn get(&self, name: &str) -> Option<&str> {
-        self.0
+        self.decoded
             .iter()
             .find(|(k, _)| k == name)
             .map(|(_, v)| v.as_str())
     }
+
+    /// The value captured under `name` exactly as it appeared in the request target, still percent-encoded.
+    pub fn get_raw(&self, name: &str) -> Option<&str> {
+        self.raw
+            .iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// Every capture as `(name, decoded value)`, in route order.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.decoded.iter().map(|(k, v)| (k.as_str(), v.as_str()))
+    }
+}
+
+/// Why a captured path value was refused.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Refused {
+    /// `%` not followed by two hex digits.
+    BadEscape,
+    /// The decoded bytes are not UTF-8.
+    NotUtf8,
+    /// The decoded value holds a NUL, `/` or `\`: an encoded separator would let one segment pose as several.
+    Separator,
+    /// The decoded segment is `.` or `..`.
+    DotSegment,
+}
+
+impl Refused {
+    fn message(self) -> &'static str {
+        match self {
+            Refused::BadEscape => {
+                "bad request: a `%` in the path is not followed by two hex digits"
+            }
+            Refused::NotUtf8 => "bad request: the percent-decoded path is not valid UTF-8",
+            Refused::Separator => {
+                "bad request: the path holds an encoded `/`, backslash or NUL, which is refused"
+            }
+            Refused::DotSegment => {
+                "bad request: the path holds an encoded `.` or `..` segment, which is refused"
+            }
+        }
+    }
+}
+
+/// Percent-decode one path segment. `+` is a plus (that is a form rule, not a path rule). Refuses what could make a segment mean something
+/// other than the one name the client wrote: encoded `/` and `\`, NUL, and `.` / `..` once decoded.
+fn decode_segment(raw: &str) -> Result<String, Refused> {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = |b: Option<&u8>| b.and_then(|b| (*b as char).to_digit(16));
+            let (Some(hi), Some(lo)) = (hex(bytes.get(i + 1)), hex(bytes.get(i + 2))) else {
+                return Err(Refused::BadEscape);
+            };
+            out.push((hi * 16 + lo) as u8);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    let decoded = String::from_utf8(out).map_err(|_| Refused::NotUtf8)?;
+    if decoded
+        .chars()
+        .any(|c| matches!(c, '\u{0}' | '/' | '\u{5c}'))
+    {
+        return Err(Refused::Separator);
+    }
+    if decoded == "." || decoded == ".." {
+        return Err(Refused::DotSegment);
+    }
+    Ok(decoded)
+}
+
+/// Decode every raw capture, or say why not.
+fn decode_params(captures: Vec<(String, String)>) -> Result<PathParams, Refused> {
+    let mut decoded = Vec::with_capacity(captures.len());
+    for (name, raw) in &captures {
+        let value = raw
+            .split('/')
+            .map(decode_segment)
+            .collect::<Result<Vec<_>, _>>()?
+            .join("/");
+        decoded.push((name.clone(), value));
+    }
+    Ok(PathParams {
+        decoded,
+        raw: captures,
+    })
 }
 
 /// Routes with `:name` and `*rest` path syntax and exact-method matching on [`http::Method`] (extension methods work).
+///
+/// Captured values are percent-decoded (see [`PathParams`]); literals are matched raw. A capture that cannot be decoded safely (bad escape,
+/// not UTF-8, an encoded `/`, backslash or NUL, an encoded `.` or `..` segment) is answered `400` before the handler runs.
 ///
 /// A known path with the wrong method answers `405` with an `Allow` header; an unknown path `404`. **No path normalisation**: `/a` and `/a/`
 /// are different paths, the same on every adapter (design section 3).
@@ -121,7 +220,9 @@ impl Router {
     }
 }
 
-fn matches(segments: &[Segment], path: &str) -> Option<PathParams> {
+/// Match `path` against `segments`. Literals are compared **raw** (an encoded `%65` does not match `e`): decoding before matching would let an
+/// encoded spelling slip past a layer that looks at the raw path. Captures are returned raw, in route order.
+fn matches(segments: &[Segment], path: &str) -> Option<Vec<(String, String)>> {
     let path = path.strip_prefix('/')?;
     let parts: Vec<&str> = path.split('/').collect();
     let mut params = Vec::new();
@@ -141,14 +242,25 @@ fn matches(segments: &[Segment], path: &str) -> Option<PathParams> {
                     return None;
                 }
                 params.push((name.clone(), parts[i..].join("/")));
-                return Some(PathParams(params));
+                return Some(params);
             }
         }
     }
-    (parts.len() == segments.len()).then_some(PathParams(params))
+    (parts.len() == segments.len()).then_some(params)
 }
 
-async fn dispatch(routes: &[Route], mut req: Request) -> Response {
+/// Decode the captures and run the handler, or refuse the request with `400` (the handler never sees an undecodable value).
+async fn run(route: &Route, captures: Vec<(String, String)>, mut req: Request) -> Response {
+    match decode_params(captures) {
+        Ok(params) => {
+            req.extensions_mut().insert(params);
+            (route.handler)(req).await
+        }
+        Err(why) => (StatusCode::BAD_REQUEST, why.message()).into_response(),
+    }
+}
+
+async fn dispatch(routes: &[Route], req: Request) -> Response {
     let path = req.uri().path().to_owned();
     let mut allowed: Vec<&Method> = Vec::new();
     // HEAD is answered by the GET handler unless a route says otherwise; the server, not the router, drops the body.
@@ -156,8 +268,7 @@ async fn dispatch(routes: &[Route], mut req: Request) -> Response {
     for route in routes {
         if let Some(params) = matches(&route.segments, &path) {
             if route.method == *req.method() {
-                req.extensions_mut().insert(params);
-                return (route.handler)(req).await;
+                return run(route, params, req).await;
             }
             if *req.method() == Method::HEAD
                 && route.method == Method::GET
@@ -171,8 +282,7 @@ async fn dispatch(routes: &[Route], mut req: Request) -> Response {
         }
     }
     if let Some((route, params)) = head_fallback {
-        req.extensions_mut().insert(params);
-        return (route.handler)(req).await;
+        return run(route, params, req).await;
     }
     if allowed.is_empty() {
         return StatusCode::NOT_FOUND.into_response();
@@ -287,6 +397,104 @@ mod tests {
             StatusCode::NOT_FOUND
         );
         assert_eq!(call(r, "GET", "/a?x=1").await.status(), StatusCode::OK);
+    }
+
+    async fn param(r: &Router, target: &str) -> (StatusCode, String) {
+        let res = call(r.clone(), "GET", target).await;
+        let status = res.status();
+        (status, text(res).await)
+    }
+
+    fn decoding_router() -> Router {
+        let get = |name: &'static str| {
+            move |req: Request| async move {
+                let p = req.extensions().get::<PathParams>().unwrap();
+                format!("{}|{}", p.get(name).unwrap(), p.get_raw(name).unwrap())
+            }
+        };
+        Router::new()
+            .get("/p/:x", get("x"))
+            .get("/f/*rest", get("rest"))
+            .get("/hello", || async { "literal" })
+    }
+
+    #[tokio::test]
+    async fn a_param_is_percent_decoded_and_the_raw_text_is_kept() {
+        let r = decoding_router();
+        assert_eq!(param(&r, "/p/a%20b").await.1, "a b|a%20b");
+        assert_eq!(param(&r, "/p/caf%C3%A9").await.1, "caf\u{e9}|caf%C3%A9");
+        assert_eq!(param(&r, "/p/%41%62").await.1, "Ab|%41%62");
+        // `+` is a plus in a path (a space only in form encoding); a lower-case escape works.
+        assert_eq!(param(&r, "/p/a+b%2d").await.1, "a+b-|a+b%2d");
+    }
+
+    #[tokio::test]
+    async fn a_rest_capture_is_decoded_segment_by_segment() {
+        let r = decoding_router();
+        assert_eq!(param(&r, "/f/a%20b/c").await.1, "a b/c|a%20b/c");
+        assert_eq!(param(&r, "/f/").await.1, "|");
+    }
+
+    #[tokio::test]
+    async fn a_malformed_escape_is_a_400_and_no_handler_runs() {
+        let r = decoding_router();
+        for target in ["/p/%zz", "/p/%4", "/p/%", "/p/a%2", "/f/ok/%g0"] {
+            let (status, body) = param(&r, target).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{target}");
+            assert!(body.contains("hex digits"), "{target}: {body}");
+        }
+    }
+
+    #[tokio::test]
+    async fn decoded_bytes_that_are_not_utf8_are_a_400() {
+        let r = decoding_router();
+        let (status, body) = param(&r, "/p/%ff%fe").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(body.contains("UTF-8"), "{body}");
+    }
+
+    #[tokio::test]
+    async fn an_encoded_separator_or_nul_is_a_400() {
+        let r = decoding_router();
+        for target in ["/p/a%2Fb", "/p/a%2fb", "/p/a%5Cb", "/p/%00", "/f/a/b%2Fc"] {
+            let (status, body) = param(&r, target).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{target}");
+            assert!(body.contains("encoded"), "{target}: {body}");
+        }
+    }
+
+    #[tokio::test]
+    async fn an_encoded_dot_segment_is_a_400() {
+        let r = decoding_router();
+        for target in ["/p/%2e%2e", "/p/%2E", "/f/a/%2e%2e/b", "/f/%2e%2E"] {
+            let (status, body) = param(&r, target).await;
+            assert_eq!(status, StatusCode::BAD_REQUEST, "{target}");
+            assert!(body.contains("segment"), "{target}: {body}");
+        }
+        // A name that merely contains dots is a name.
+        assert_eq!(param(&r, "/p/..a").await.0, StatusCode::OK);
+        assert_eq!(param(&r, "/p/a.b").await.0, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn literals_are_matched_raw_so_an_encoded_spelling_is_a_different_path() {
+        let r = decoding_router();
+        assert_eq!(param(&r, "/hello").await.1, "literal");
+        assert_eq!(param(&r, "/h%65llo").await.0, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn an_undecodable_value_is_refused_on_head_too_and_not_on_a_wrong_method() {
+        let r = decoding_router();
+        assert_eq!(
+            call(r.clone(), "HEAD", "/p/%zz").await.status(),
+            StatusCode::BAD_REQUEST
+        );
+        // The path has no POST route: the answer is 405, not a decoding error.
+        assert_eq!(
+            call(r, "POST", "/p/%zz").await.status(),
+            StatusCode::METHOD_NOT_ALLOWED
+        );
     }
 
     #[test]

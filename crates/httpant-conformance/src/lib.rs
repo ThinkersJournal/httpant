@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt adapter conformance suite (design `docs/HTTPANT-DESIGN.md`, section 6).
 //!
-//! - [`CASES`]: twelve cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
+//! - [`CASES`]: thirteen cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
 //!   minimal HTTP/1.1 client. The client is deliberately not HTTPAnt, hyper or any adapter, so a defect cannot hide on both ends of a test.
 //! - Every case lists the known-bad [`Mutant`]s it must fail on. [`check_case`] demands both halves: the reference passes **and** every mutant
 //!   fails. A case that passes on its mutant is itself a failing test.
 //! - Cases 1-7 are the old crate's defects restated; cases 8-12 (streaming, shutdown, keep-alive, concurrency, HEAD) need a live connection
-//!   and are in `live`. [`measure`] turns three of them into the capability matrix (`docs/CAPABILITY-MATRIX.md`).
+//!   and are in `live`; case 13 (path encoding) is HTTPAnt's own rule. [`measure`] turns three of them into the capability matrix (`docs/CAPABILITY-MATRIX.md`).
 //!
 //! A new adapter is tested by implementing [`Subject`] for it (or wrapping it in [`AdapterSubject`]) and calling [`run_suite`].
 
@@ -56,8 +56,8 @@ impl std::fmt::Debug for Case {
     }
 }
 
-/// The twelve cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
-pub const CASES: [Case; 12] = [
+/// The thirteen cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
+pub const CASES: [Case; 13] = [
     Case {
         number: 1,
         id: "method-fidelity",
@@ -146,6 +146,13 @@ pub const CASES: [Case; 12] = [
         mutants: &[Mutant::HeadStripsHeaders],
         run: live::head,
     },
+    Case {
+        number: 13,
+        id: "path-encoding",
+        requirement: "a percent-encoded path reaches the handler decoded; a bad escape, non-UTF-8, an encoded `/`, backslash, NUL or dot segment is a 400; the encoded spelling of a literal route is a 404",
+        mutants: &[Mutant::DecodeBeforeRouting],
+        run: cases::path_encoding,
+    },
 ];
 
 /// Run every case against `subject`: `(case number, result)` for each.
@@ -186,7 +193,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cases_are_numbered_one_to_twelve_in_order() {
+    fn cases_are_numbered_from_one_in_order() {
         for (i, c) in CASES.iter().enumerate() {
             assert_eq!(usize::from(c.number), i + 1, "{}", c.id);
         }
@@ -256,6 +263,7 @@ mod tests {
     case_test!(case_10_connection_handling, 9);
     case_test!(case_11_concurrency, 10);
     case_test!(case_12_head, 11);
+    case_test!(case_13_path_encoding, 12);
 
     #[test]
     fn client_cases_are_numbered_in_order_and_each_mutant_is_used_once() {
