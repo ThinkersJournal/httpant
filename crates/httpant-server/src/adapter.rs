@@ -23,7 +23,7 @@ pub struct ServeOptions {
     pub trusted_proxies: TrustedProxies,
     /// Answers the ACME HTTP-01 challenge prefix before any route, see [`ChallengeResponder`] (default: none, the prefix is the application's).
     pub challenge: Option<Arc<dyn ChallengeResponder>>,
-    /// Redirect cleartext requests for the listed hosts to HTTPS, see [`HttpsRedirect`] (default: none).
+    /// Redirect cleartext requests for the listed hosts to HTTPS, see [`HttpsRedirect`](crate::HttpsRedirect) (default: none).
     pub https_redirect: Option<crate::HttpsRedirect>,
     /// Terminate TLS on `listener` with this acceptor (feature `tls`). Adapters whose [`Capabilities::tls`] is not `Yes` are refused before they start.
     #[cfg(feature = "tls")]
