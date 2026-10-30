@@ -2,7 +2,7 @@
 
 ## Known issues in web-server-abstraction 1.0.2 (superseded by HTTPAnt, in progress)
 
-This crate is being replaced by [HTTPAnt](https://github.com/ThinkersJournal/httpant). 1.0.2 is **not yanked**. A source read of the
+**The old `web-server-abstraction` 1.0.x line is not supported: it is end of life, and security fixes go to HTTPAnt only (use `httpant`; see [SECURITY.md](SECURITY.md)).** This crate is being replaced by [HTTPAnt](https://github.com/ThinkersJournal/httpant). 1.0.2 is **not yanked**. A source read of the
 crate found the defects below; each line gives its basis. Full evidence, with line numbers: [docs/OLD-CRATE-SURVEY.md](docs/OLD-CRATE-SURVEY.md).
 
 - **Unknown request methods are served as GET** (axum, actix-web, warp, salvo, poem). Basis: a `_ => HttpMethod::GET` arm in each adapter's request conversion.
