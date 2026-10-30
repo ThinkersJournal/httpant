@@ -205,20 +205,22 @@ impl CertSource for Swappable {
     }
 }
 
+struct Shared(Arc<Swappable>);
+
+impl CertSource for Shared {
+    fn cert_for<'a>(
+        &'a self,
+        n: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Option<Arc<ServerCert>>, CertSourceError>> {
+        self.0.cert_for(n)
+    }
+}
+
 #[tokio::test]
 async fn a_renewed_certificate_serves_the_next_connection_without_a_restart() {
     for id in ADAPTERS {
         let (old, new) = (make_cert("localhost"), make_cert("localhost"));
         let source = Arc::new(Swappable(std::sync::Mutex::new(Arc::new(old.cert.clone()))));
-        struct Shared(Arc<Swappable>);
-        impl CertSource for Shared {
-            fn cert_for<'a>(
-                &'a self,
-                n: Option<&'a str>,
-            ) -> BoxFuture<'a, Result<Option<Arc<ServerCert>>, CertSourceError>> {
-                self.0.cert_for(n)
-            }
-        }
         let server = start(id, Shared(Arc::clone(&source))).await;
         let c = connector(&[&old.der, &new.der], false);
         assert_eq!(
@@ -318,4 +320,75 @@ async fn an_adapter_that_cannot_terminate_tls_is_refused_never_served_in_clear()
         ),
         "{err}"
     );
+}
+
+#[tokio::test]
+async fn read_back_reports_the_certificate_the_listener_really_serves() {
+    for id in ADAPTERS {
+        let (old, new) = (make_cert("localhost"), make_cert("localhost"));
+        let source = Arc::new(Swappable(std::sync::Mutex::new(Arc::new(old.cert.clone()))));
+        let server = start(id, Shared(Arc::clone(&source))).await;
+        let t = Duration::from_secs(5);
+        let first = httpant_server::read_back(server.addr(), "localhost", t)
+            .await
+            .unwrap();
+        assert_eq!(first.leaf_der, old.der, "{id}");
+        assert_eq!(first.chain_len, 1, "{id}");
+        // rcgen's self-signed certificate is its own issuer, and is valid now (not_after in the future).
+        assert_eq!(first.issuer, first.subject, "{id}");
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        assert!(first.not_before <= now && first.not_after > now, "{id}");
+        assert_eq!(first.alpn.as_deref(), Some("http/1.1"), "{id}");
+        assert!(
+            first.protocol.contains("TLSv1_3") || first.protocol.contains("1.3"),
+            "{id}: {}",
+            first.protocol
+        );
+        // After a renewal the read-back shows the new certificate: it is read from the listener, not from the source's say-so.
+        *source.0.lock().unwrap() = Arc::new(new.cert.clone());
+        let second = httpant_server::read_back(server.addr(), "localhost", t)
+            .await
+            .unwrap();
+        assert_eq!(second.leaf_der, new.der, "{id}");
+        assert_ne!(second.leaf_der, first.leaf_der, "{id}");
+        server.shutdown().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn read_back_of_a_refused_name_or_a_plaintext_port_is_an_error() {
+    let made = make_cert("localhost");
+    let picky = Picky {
+        known: Arc::new(made.cert.clone()),
+        calls: AtomicUsize::new(0),
+        fail: false,
+    };
+    let server = start("hyper", picky).await;
+    let t = Duration::from_secs(5);
+    assert!(
+        httpant_server::read_back(server.addr(), "localhost", t)
+            .await
+            .is_ok()
+    );
+    assert!(
+        httpant_server::read_back(server.addr(), "other.test", t)
+            .await
+            .is_err()
+    );
+    server.shutdown().await.unwrap();
+
+    let plain = Server::new()
+        .get("/", || async { "hi" })
+        .bind("127.0.0.1:0")
+        .await
+        .unwrap();
+    assert!(
+        httpant_server::read_back(plain.addr(), "localhost", t)
+            .await
+            .is_err()
+    );
+    plain.shutdown().await.unwrap();
 }
