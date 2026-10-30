@@ -97,9 +97,12 @@ impl ServerAdapter for ActixAdapter {
 }
 
 async fn handle(svc: BoxService, req: HttpRequest, payload: web::Payload) -> HttpResponse {
-    let Ok(request) = to_request(&req, payload) else {
+    let Ok(mut request) = to_request(&req, payload) else {
         return HttpResponse::BadRequest().finish();
     };
+    if let Some(peer) = req.peer_addr() {
+        request.extensions_mut().insert(crate::PeerAddr(peer));
+    }
     let res = svc
         .oneshot(request)
         .await

@@ -154,6 +154,7 @@ mutant is itself a failing test. The first seven mutants are the old crate's mea
 | 13 | a percent-encoded path reaches the handler decoded; a bad escape, non-UTF-8, an encoded `/`, backslash, NUL or dot segment is a 400; the encoded spelling of a literal is a 404 | decodes `%2F` or `%2e` before routing |
 | 14 | the default limits hold: target over 8 KiB is 414, over 64 header fields or 16 KiB of header bytes is 431, a body over 2 MiB (declared or streamed) is 413; exactly at a limit is served | a limit is not enforced |
 | 15 | a request that never finishes does not hold shutdown for ever: it waits for the grace period, then ends the request (503 / connection closed) and returns | waits for ever |
+| 16 | the client address and scheme come from the forwarded headers only when the peer is a configured trusted proxy | trusts any peer / trusts none |
 
 Cases 8-12 are expected to expose differences between frameworks; the result is a **capability matrix** (section 8), not a hidden exception.
 A case an adapter cannot pass is recorded as `Unsupported` in its `Capabilities`, and the suite then asserts that using the feature returns the named error

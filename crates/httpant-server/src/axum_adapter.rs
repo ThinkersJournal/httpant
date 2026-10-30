@@ -7,7 +7,7 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tower::ServiceExt;
 
-use crate::{RunningServer, ServeOptions, ServerAdapter};
+use crate::{PeerAddr, RunningServer, ServeOptions, ServerAdapter};
 
 /// axum 0.8 serving the one boxed service as its fallback: axum's own routing, extractors and `Router` are not used, so route matching and
 /// error mapping stay identical to every other adapter. The conversion is the whole adapter.
@@ -46,7 +46,14 @@ impl ServerAdapter for AxumAdapter {
                         .unwrap_or_else(PoisonError::into_inner)
                         .clone();
                     async move {
-                        let req: Request = req.map(Body::new);
+                        let mut req: Request = req.map(Body::new);
+                        let peer = req
+                            .extensions()
+                            .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
+                            .map(|c| c.0);
+                        if let Some(peer) = peer {
+                            req.extensions_mut().insert(PeerAddr(peer));
+                        }
                         let res = svc
                             .oneshot(req)
                             .await
@@ -57,11 +64,14 @@ impl ServerAdapter for AxumAdapter {
             ));
             let (stop, stopped) = oneshot::channel::<()>();
             let task = tokio::spawn(async move {
-                let _ = axum::serve(listener, app)
-                    .with_graceful_shutdown(async move {
-                        let _ = stopped.await;
-                    })
-                    .await;
+                let _ = axum::serve(
+                    listener,
+                    app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+                )
+                .with_graceful_shutdown(async move {
+                    let _ = stopped.await;
+                })
+                .await;
             });
             Ok(RunningServer::new(addr, stop, task, grace))
         })

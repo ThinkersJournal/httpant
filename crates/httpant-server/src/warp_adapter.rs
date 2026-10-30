@@ -51,12 +51,14 @@ impl ServerAdapter for WarpAdapter {
                 .and(warp::path::full())
                 .and(warp::query::raw().or(warp::any().map(String::new)).unify())
                 .and(warp::header::headers_cloned())
+                .and(warp::addr::remote())
                 .and(warp::body::stream())
                 .and_then(
                     move |method: Method,
                           path: warp::path::FullPath,
                           query: String,
                           headers: HeaderMap,
+                          peer: Option<std::net::SocketAddr>,
                           body| {
                         let svc = shared
                             .lock()
@@ -64,7 +66,7 @@ impl ServerAdapter for WarpAdapter {
                             .clone();
                         async move {
                             Ok::<_, Infallible>(
-                                handle(svc, method, path, query, headers, body).await,
+                                handle(svc, method, path, query, headers, peer, body).await,
                             )
                         }
                     },
@@ -90,6 +92,7 @@ async fn handle<S, B>(
     path: warp::path::FullPath,
     query: String,
     headers: HeaderMap,
+    peer: Option<std::net::SocketAddr>,
     body: S,
 ) -> warp::reply::Response
 where
@@ -128,7 +131,10 @@ where
     })) else {
         return bad_request();
     };
-    let request: Request = request;
+    let mut request: Request = request;
+    if let Some(peer) = peer {
+        request.extensions_mut().insert(crate::PeerAddr(peer));
+    }
     let out = svc
         .oneshot(request)
         .await

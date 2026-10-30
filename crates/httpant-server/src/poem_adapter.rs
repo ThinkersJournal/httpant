@@ -81,6 +81,7 @@ async fn handle(svc: BoxService, mut req: poem::Request) -> poem::Response {
     for (name, value) in req.headers() {
         builder = builder.header(name, value);
     }
+    let peer = req.remote_addr().as_socket_addr().copied();
     let stream = req.take_body().into_bytes_stream();
     let Ok(request) = builder.body(Body::new(StreamBody {
         stream: Box::pin(stream),
@@ -90,7 +91,10 @@ async fn handle(svc: BoxService, mut req: poem::Request) -> poem::Response {
             .status(http::StatusCode::BAD_REQUEST)
             .finish();
     };
-    let request: Request = request;
+    let mut request: Request = request;
+    if let Some(peer) = peer {
+        request.extensions_mut().insert(crate::PeerAddr(peer));
+    }
     let res = svc
         .oneshot(request)
         .await

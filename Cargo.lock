@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-client"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "httpant-core",
  "hyper",
@@ -663,7 +663,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-conformance"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bytes",
  "futures-util",
@@ -680,7 +680,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bytes",
  "futures-util",
@@ -694,7 +694,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-server"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "actix-web",
  "axum",

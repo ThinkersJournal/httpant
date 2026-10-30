@@ -6,7 +6,7 @@ use httpant_core::{BoxFuture, BoxService, Capabilities, Error, Result};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
-use crate::{DEFAULT_SHUTDOWN_GRACE, Grace, Limits};
+use crate::{DEFAULT_SHUTDOWN_GRACE, Grace, Limits, TrustedProxies};
 
 /// What an adapter is given to serve on.
 #[derive(Debug)]
@@ -17,6 +17,8 @@ pub struct ServeOptions {
     pub listener: std::net::TcpListener,
     /// What the server accepts before a handler runs.
     pub limits: Limits,
+    /// Peers trusted to say who the client is (default: none), see [`Origin`](crate::Origin).
+    pub trusted_proxies: TrustedProxies,
     grace: Grace,
 }
 
@@ -26,6 +28,7 @@ impl ServeOptions {
         Self {
             listener,
             limits: Limits::default(),
+            trusted_proxies: TrustedProxies::none(),
             grace: Grace::new(Some(DEFAULT_SHUTDOWN_GRACE)),
         }
     }
@@ -33,6 +36,12 @@ impl ServeOptions {
     /// Serve with these limits instead of the defaults.
     pub fn limits(mut self, limits: Limits) -> Self {
         self.limits = limits;
+        self
+    }
+
+    /// Trust these peers to forward the client's address and scheme (`X-Forwarded-For`, `X-Forwarded-Proto`); nobody is trusted by default.
+    pub fn trusted_proxies(mut self, proxies: TrustedProxies) -> Self {
+        self.trusted_proxies = proxies;
         self
     }
 
@@ -53,10 +62,13 @@ impl ServeOptions {
         self.grace.clone()
     }
 
-    /// The service an adapter must serve: `svc` behind this server's limits and its shutdown switch. Every adapter calls this on the service
+    /// The service an adapter must serve: `svc` behind this server's limits, its shutdown switch and the [`Origin`](crate::Origin) of each request (the adapter must put a [`PeerAddr`](crate::PeerAddr) in the request's extensions first). Every adapter calls this on the service
     /// it is given (conformance cases 14 and 15).
     pub fn wrap(&self, svc: BoxService) -> BoxService {
-        self.grace.wrap(self.limits.wrap(svc))
+        self.grace.wrap(
+            self.limits
+                .wrap(crate::edge::wrap(self.trusted_proxies.clone(), svc)),
+        )
     }
 }
 

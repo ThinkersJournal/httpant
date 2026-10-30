@@ -7,6 +7,7 @@ mod actix_adapter;
 mod adapter;
 #[cfg(feature = "axum")]
 mod axum_adapter;
+mod edge;
 mod grace;
 mod hyper_adapter;
 mod limits;
@@ -25,6 +26,7 @@ pub use actix_adapter::ActixAdapter;
 pub use adapter::{FORCE_WAIT, RunningServer, ServeOptions, ServerAdapter};
 #[cfg(feature = "axum")]
 pub use axum_adapter::AxumAdapter;
+pub use edge::{BadProxy, Origin, PeerAddr, Scheme, TrustedProxies};
 pub use grace::{DEFAULT_SHUTDOWN_GRACE, Grace};
 pub use httpant_core as core;
 use httpant_core::http::Method;
@@ -61,6 +63,7 @@ pub struct Server {
     layers: Vec<LayerFn>,
     limits: Limits,
     grace: Option<Option<Duration>>,
+    trusted_proxies: TrustedProxies,
 }
 
 impl Default for Server {
@@ -78,6 +81,7 @@ impl Server {
             layers: Vec::new(),
             limits: Limits::default(),
             grace: None,
+            trusted_proxies: TrustedProxies::none(),
         }
     }
 
@@ -120,12 +124,19 @@ impl Server {
             layers: Vec::new(),
             limits: Limits::default(),
             grace: None,
+            trusted_proxies: TrustedProxies::none(),
         }
     }
 
     /// Serve with these limits (request target, header count and size, body size) instead of the conservative defaults, see [`Limits`].
     pub fn limits(mut self, limits: Limits) -> Self {
         self.limits = limits;
+        self
+    }
+
+    /// Peers trusted to forward the client's address and scheme, see [`ServeOptions::trusted_proxies`] and [`Origin`].
+    pub fn trusted_proxies(mut self, proxies: TrustedProxies) -> Self {
+        self.trusted_proxies = proxies;
         self
     }
 
@@ -188,8 +199,10 @@ impl Server {
     /// Serve on a socket that is already bound.
     pub async fn serve(self, listener: std::net::TcpListener) -> Result<RunningServer> {
         let adapter = Arc::clone(&self.adapter);
-        let (limits, grace) = (self.limits, self.grace);
-        let opts = ServeOptions::new(listener).limits(limits);
+        let (limits, grace, proxies) = (self.limits, self.grace, self.trusted_proxies.clone());
+        let opts = ServeOptions::new(listener)
+            .limits(limits)
+            .trusted_proxies(proxies);
         let opts = match grace {
             None => opts,
             Some(Some(period)) => opts.shutdown_grace(period),

@@ -8,7 +8,7 @@ use tokio::sync::{oneshot, watch};
 use tokio::task::JoinSet;
 use tower::ServiceExt;
 
-use crate::{RunningServer, ServeOptions, ServerAdapter};
+use crate::{PeerAddr, RunningServer, ServeOptions, ServerAdapter};
 
 /// The reference adapter: hyper 1.x over HTTP/1.1, no framework on top. The conversion is the whole adapter.
 #[derive(Clone, Copy, Debug, Default)]
@@ -45,12 +45,13 @@ impl ServerAdapter for HyperAdapter {
                     tokio::select! {
                         _ = &mut stopped => break,
                         accepted = listener.accept() => {
-                            let Ok((stream, _)) = accepted else { continue };
+                            let Ok((stream, peer)) = accepted else { continue };
                             let svc = svc.clone();
                             let mut draining = draining.clone();
                             conns.spawn(async move {
                                 let service = service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
-                                    let req: Request = req.map(Body::new);
+                                    let mut req: Request = req.map(Body::new);
+                                    req.extensions_mut().insert(PeerAddr(peer));
                                     svc.clone().oneshot(req)
                                 });
                                 // A connection that errors (peer reset, malformed request) ends only that connection.

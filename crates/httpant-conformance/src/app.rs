@@ -74,6 +74,26 @@ async fn param(req: Request) -> String {
     )
 }
 
+/// `/origin`: who HTTPAnt says the client is: `<address> <http|https> <direct|proxy>`.
+async fn origin(req: Request) -> String {
+    match req.extensions().get::<httpant_server::Origin>() {
+        Some(o) => format!(
+            "{} {} {}",
+            o.client,
+            match o.scheme {
+                httpant_server::Scheme::Http => "http",
+                httpant_server::Scheme::Https => "https",
+            },
+            if o.via_trusted_proxy {
+                "proxy"
+            } else {
+                "direct"
+            }
+        ),
+        None => "none".to_owned(),
+    }
+}
+
 /// `/sink`: reads the whole request body (the handler asks for far more than any server limit, so only the server's limit can stop it).
 async fn sink(req: Request) -> Result<String, Error> {
     let bytes = req.into_body().bytes(1 << 40).await?;
@@ -179,6 +199,7 @@ pub fn app_with_gates() -> (App, Gates) {
                 }
             }
         })
+        .get("/origin", origin)
         .post("/sink", sink)
         .get("/who/:x", who)
         .post("/who/:x", who)

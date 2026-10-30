@@ -148,6 +148,11 @@ impl Handler for Goal {
         for (name, value) in req.headers() {
             builder = builder.header(name, value);
         }
+        let remote = req.remote_addr();
+        let peer = remote
+            .as_ipv4()
+            .map(|a| std::net::SocketAddr::V4(*a))
+            .or_else(|| remote.as_ipv6().map(|a| std::net::SocketAddr::V6(*a)));
         let incoming = req.take_body();
         let Ok(request) = builder.body(Body::new(Declared {
             inner: incoming,
@@ -156,7 +161,10 @@ impl Handler for Goal {
             res.status_code(http::StatusCode::BAD_REQUEST);
             return;
         };
-        let request: Request = request;
+        let mut request: Request = request;
+        if let Some(peer) = peer {
+            request.extensions_mut().insert(crate::PeerAddr(peer));
+        }
         let out = svc
             .oneshot(request)
             .await

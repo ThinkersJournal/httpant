@@ -11,15 +11,17 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 `docs/BENCHMARKS.md`, `docs/ACTIX-ADAPTER-NOTES.md`.
 
 ## State
-- Work list: `ROADMAP.md` (the repo's own, PM's order). Merged: slices 1a-7, percent-decoding (#17, 0.2.0), limits (#18, 0.3.0).
-- **Open PR:** shutdown grace period (this branch `feat/shutdown-grace`, worktree `C:\Projects\httpant-wt-grace`, 0.4.0 placeholder, Breaking: bounded `shutdown()`, adapter API gains `Grace`).
+- Work list: `ROADMAP.md` (the repo's own, PM's order). Merged: slices 1a-7, percent-decoding (#17, 0.2.0), limits (#18, 0.3.0), shutdown grace (#19, 0.4.0).
+- **Open PR:** edge mode (branch `feat/edge-mode`, worktree `C:\Projects\httpant-wt-edge`, 0.5.0 placeholder, Breaking: adapters supply `PeerAddr`, `Origin`/`TrustedProxies`, case 16). Row 4 slice (a).
 - **Lesson (salvo):** Windows green is not Linux green. Wait for the ubuntu job before calling an adapter or a limit done.
 - **Option A (Tower core, thin adapters) is PROVISIONAL**: PM told me to proceed 2026-10-29 while CireSnave decides A/B/C.
-- Rules decided: no trailing-slash normalisation (design section 3); path captures decoded, literals raw (CHANGELOG 0.2.0); limits enforced by HTTPAnt on the request (0.3.0); shutdown grace enforced by a Tower wrapper, not by each framework (0.4.0).
+- Rules decided: no trailing-slash normalisation (design section 3); path captures decoded, literals raw (CHANGELOG 0.2.0); limits enforced by HTTPAnt on the request (0.3.0); shutdown grace enforced by a Tower wrapper (0.4.0); forwarded headers believed only from configured trusted proxies (0.5.0).
+- WebHostAnt agreed the TLS plan (rustls only, feature `tls`, `CertSource` trait, HTTPAnt-owned acceptor below adapters, actix/warp likely edge-mode only; need 14 with the CertSource slice, need 22 read-back in it). **They asked to be pinged when edge mode merges** (find the lane by cwd `C:\Projects\WebHostAnt`).
+- Not publishable: `docs/PATENT-SWEEP.md` is not a real sweep (ROADMAP row 11).
 
 ## Next (in order)
-1. After each merge: remove the worktree + branch (CLAUDE.md section 3).
-2. `ROADMAP.md` row 4: TLS hook. First ask the WebHostAnt lane (peer `p362rz26` per the PM; peer ids rotate, find it by cwd `C:\Projects\WebHostAnt`) what it needs; HTTPAnt must not become a TLS stack. Then row 5 (benchmarks).
+1. After the merge: ping WebHostAnt; remove the worktree + branch (CLAUDE.md section 3).
+2. `ROADMAP.md` row 4 slice (b): `CertSource` trait, feature `tls`, HTTPAnt-owned rustls acceptor on hyper/axum, served-cert read-back, ACME challenge-prefix handler. Probe each adapter's real TLS ability first (the claims so far are recalled, not run). Then row 5 (benchmarks); the flaky-suite row needs evidence.
 
 ## Standing constraints
 - `CARGO_BUILD_JOBS=2`, one build at a time. Primary checkout stays on `main`; every branch in `C:\Projects\httpant-wt-<topic>`.
