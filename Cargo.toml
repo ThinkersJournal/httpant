@@ -4,7 +4,7 @@ members = ["crates/httpant-core", "crates/httpant-server", "crates/httpant-clien
 
 [workspace.package]
 # One number for every crate in the project (portfolio rule). 0.1.0: a new line, not a continuation of web-server-abstraction 1.0.x.
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 authors = ["Eric Evans <ciresnave@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -17,6 +17,7 @@ http-body = "1"
 http-body-util = "0.1"
 axum = { version = "0.8", default-features = false }
 actix-web = { version = "4", default-features = false }
+poem = { version = "3", default-features = false }
 hyper = { version = "1", default-features = false }
 hyper-util = { version = "0.1", default-features = false }
 httpant-core = { path = "crates/httpant-core", version = "0.1.0" }

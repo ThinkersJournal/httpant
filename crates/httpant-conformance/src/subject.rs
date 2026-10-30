@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use httpant_core::{BoxFuture, Capabilities, LayerFn, Result, Router, apply_layers};
 use httpant_server::{
-    ActixAdapter, AxumAdapter, HyperAdapter, RunningServer, ServeOptions, ServerAdapter,
+    ActixAdapter, AxumAdapter, HyperAdapter, PoemAdapter, RunningServer, ServeOptions,
+    ServerAdapter,
 };
 
 use crate::mutants::{self, Mutant};
@@ -63,6 +64,7 @@ pub fn adapters() -> Vec<Box<dyn Subject>> {
         Box::new(AdapterSubject(HyperAdapter)),
         Box::new(AdapterSubject(AxumAdapter)),
         Box::new(AdapterSubject(ActixAdapter)),
+        Box::new(AdapterSubject(PoemAdapter)),
     ]
 }
 
