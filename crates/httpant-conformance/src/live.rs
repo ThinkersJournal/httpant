@@ -164,13 +164,14 @@ pub fn graceful_shutdown(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
             );
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
+        let t_refused = t_stop.elapsed();
         ensure!(
             idle.closed_by_peer(PROMPT).await,
             "an idle keep-alive connection was still open {PROMPT:?} after shutdown was requested"
         );
         ensure!(
             !stopping.is_finished(),
-            "shutdown returned while a request was still in flight ({:?} after it was requested)",
+            "shutdown returned while a request was still in flight ({:?} after it was requested; new connections refused after {t_refused:?})",
             t_stop.elapsed()
         );
 

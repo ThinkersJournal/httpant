@@ -67,7 +67,8 @@ impl ServerAdapter for SalvoAdapter {
                         // salvo drops its pending accept when the stop command arrives and never polls the acceptor again, so the close
                         // has to be seen to happen first; the time limit only keeps a wedged accept loop from hanging shutdown.
                         close.notify_one();
-                        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), closed.notified()).await;
+                        let ack = tokio::time::timeout(std::time::Duration::from_secs(2), closed.notified()).await;
+                        eprintln!("DBG salvo: listener close acknowledged: {}", ack.is_ok());
                         handle.stop_graceful(None);
                         serving.await;
                         // salvo's own wait counts connections; the contract counts requests, so wait for those too.
