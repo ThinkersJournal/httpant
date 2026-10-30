@@ -573,3 +573,152 @@ async fn a_silent_client_and_a_plaintext_client_are_reported_as_refused() {
         server.shutdown().await.unwrap();
     }
 }
+
+/// Normal certificate for every name; a challenge certificate for `localhost` while `pending`. Counts how often the challenge is asked.
+struct AcmeSource {
+    normal: Arc<ServerCert>,
+    challenge: Arc<ServerCert>,
+    pending: bool,
+    asked: Arc<AtomicUsize>,
+}
+
+impl CertSource for AcmeSource {
+    fn cert_for<'a>(
+        &'a self,
+        _name: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Option<Arc<ServerCert>>, CertSourceError>> {
+        Box::pin(async move { Ok(Some(Arc::clone(&self.normal))) })
+    }
+
+    fn acme_tls_cert<'a>(
+        &'a self,
+        name: Option<&'a str>,
+    ) -> BoxFuture<'a, Option<Arc<ServerCert>>> {
+        self.asked.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move {
+            (self.pending && name == Some("localhost")).then(|| Arc::clone(&self.challenge))
+        })
+    }
+}
+
+/// A client that offers exactly `alpn` and trusts `roots`; the leaf and the negotiated protocol it saw, then whatever the server sends.
+async fn handshake_with_alpn(
+    server: &RunningServer,
+    roots: &[&[u8]],
+    alpn: &[&[u8]],
+) -> std::io::Result<(Vec<u8>, Option<Vec<u8>>, Vec<u8>)> {
+    let mut store = RootCertStore::empty();
+    for der in roots {
+        store.add(CertificateDer::from(der.to_vec())).unwrap();
+    }
+    let mut config = rustls::ClientConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .unwrap()
+    .with_root_certificates(store)
+    .with_no_client_auth();
+    config.alpn_protocols = alpn.iter().map(|p| p.to_vec()).collect();
+    let tcp = TcpStream::connect(server.addr()).await?;
+    let mut tls = TlsConnector::from(Arc::new(config))
+        .connect(ServerName::try_from("localhost").unwrap(), tcp)
+        .await?;
+    let (_, conn) = tls.get_ref();
+    let leaf = conn.peer_certificates().unwrap()[0].to_vec();
+    let negotiated = conn.alpn_protocol().map(<[u8]>::to_vec);
+    // The server either closes (a validation connection) or waits for a request; give it none and see which.
+    let mut rest = Vec::new();
+    let _ = tokio::time::timeout(Duration::from_millis(500), tls.read_to_end(&mut rest)).await;
+    Ok((leaf, negotiated, rest))
+}
+
+#[tokio::test]
+async fn acme_tls_alpn_is_answered_with_the_challenge_certificate_and_closed() {
+    use httpant_server::{RefusalReason, TlsEvent};
+    for id in ADAPTERS {
+        let (normal, challenge) = (make_cert("localhost"), make_cert("localhost"));
+        let asked = Arc::new(AtomicUsize::new(0));
+        let events = Events::default();
+        let server = start_audited(
+            id,
+            AcmeSource {
+                normal: Arc::new(normal.cert.clone()),
+                challenge: Arc::new(challenge.cert.clone()),
+                pending: true,
+                asked: Arc::clone(&asked),
+            },
+            events.clone(),
+            None,
+        )
+        .await;
+
+        // A validator offers only `acme-tls/1`: it gets the challenge certificate, that protocol, and then the connection is closed.
+        let (leaf, negotiated, rest) =
+            handshake_with_alpn(&server, &[&challenge.der], &[b"acme-tls/1"])
+                .await
+                .unwrap_or_else(|e| panic!("{id}: {e}"));
+        assert_eq!(leaf, challenge.der, "{id}: not the challenge certificate");
+        assert_eq!(negotiated.as_deref(), Some(&b"acme-tls/1"[..]), "{id}");
+        assert!(
+            rest.is_empty(),
+            "{id}: the validation connection was served as HTTP"
+        );
+        assert_eq!(
+            events.wait_take(1).await,
+            vec![TlsEvent::AcmeChallengeServed {
+                server_name: Some("localhost".to_owned())
+            }],
+            "{id}: a validation is not a refusal"
+        );
+        assert_eq!(asked.load(Ordering::SeqCst), 1, "{id}");
+
+        // An ordinary client is unaffected: the normal certificate, HTTP, and the source is not asked about challenges.
+        let before = asked.load(Ordering::SeqCst);
+        let c = connector(&[&normal.der], false);
+        let (reply, leaf) = fetch(&server, &c, "localhost", "").await.unwrap();
+        assert_eq!(
+            leaf, normal.der,
+            "{id}: an ordinary client got the challenge certificate"
+        );
+        assert!(reply.starts_with("HTTP/1.1 200"), "{id}: {reply}");
+        assert_eq!(
+            asked.load(Ordering::SeqCst),
+            before,
+            "{id}: asked about a challenge without acme-tls/1"
+        );
+        server.shutdown().await.unwrap();
+
+        // Nothing pending: the same validator is refused, not given the normal certificate under a protocol it did not agree on.
+        let events = Events::default();
+        let server = start_audited(
+            id,
+            AcmeSource {
+                normal: Arc::new(normal.cert.clone()),
+                challenge: Arc::new(challenge.cert.clone()),
+                pending: false,
+                asked: Arc::new(AtomicUsize::new(0)),
+            },
+            events.clone(),
+            None,
+        )
+        .await;
+        assert!(
+            handshake_with_alpn(&server, &[&normal.der, &challenge.der], &[b"acme-tls/1"])
+                .await
+                .is_err(),
+            "{id}: served a validator with nothing pending"
+        );
+        let got = events.wait_take(1).await;
+        assert!(
+            matches!(
+                got[..],
+                [TlsEvent::HandshakeRefused {
+                    reason: RefusalReason::Protocol,
+                    ..
+                }]
+            ),
+            "{id}: {got:?}"
+        );
+        server.shutdown().await.unwrap();
+    }
+}
