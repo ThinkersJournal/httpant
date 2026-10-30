@@ -11,7 +11,7 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 `docs/BENCHMARKS.md`, `docs/ACTIX-ADAPTER-NOTES.md`.
 
 ## State
-- Merged: slices 1a-6, #15 (#7-#15). **Open PRs:** #16 warp adapter (0.1.9, in the PM's gate); percent-decoding (this branch `feat/percent-decoding`, worktree `C:\\Projects\\httpant-wt-pct`, 0.2.0 placeholder, Breaking: `PathParams::get` decodes).
+- Merged: slices 1a-6, #15 (#7-#16: adapters hyper, axum, actix-web, poem, salvo, warp; rocket not built, source reading). **Open PR:** percent-decoding (this branch `feat/percent-decoding`, worktree `C:\\Projects\\httpant-wt-pct`, 0.2.0 placeholder, Breaking: `PathParams::get` decodes).
 - PM order (2026-10-30), one PR per item: (1) safety defaults: percent-decoding (done, in PR), then **limits in `ServeOptions`** (header / body / URI sizes, conservative defaults, a test per limit that fails when the limit is removed), then a **shutdown grace period**; (2) TLS hook with WebHostAnt (ask peer `p362rz26` what they need; HTTPAnt must not become a TLS stack); (3) benchmark harness last.
 - **ROADMAP row to add (PM asked):** actually RUN rocket: an unsupported-method (PROPFIND) probe against a real rocket 0.5.x, to turn the "source reading, not run" in CHANGELOG + design section 8 into a measurement. The PM owns `PORTFOLIO-ROADMAP.md`; this is the request text.
 - **Lesson (salvo):** Windows green is not Linux green. Wait for the ubuntu job before calling an adapter or a limit done.
