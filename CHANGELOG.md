@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.7] - 2026-10-30
 
-- Slice 6: salvo adapter (`SalvoAdapter`, feature `salvo` of `httpant-server`, `Server::with_adapter("salvo")`), salvo_core 1.0 with default features off. The one boxed service is the goal of a catch-all salvo route, so routing and error mapping are HTTPAnt's. Request bodies stream through (declared `Content-Length` is the size hint); a response body of known length keeps its `Content-Length`, unknown length is chunked. Conformance cases 1-12 pass on hyper, axum, actix-web, poem and salvo (first run, no adapter-side fix needed); the matrix gains the row. Not published.
+- Slice 6: salvo adapter (`SalvoAdapter`, feature `salvo` of `httpant-server`, `Server::with_adapter("salvo")`), salvo_core 1.0 with default features off. The one boxed service is the goal of a catch-all salvo route, so routing and error mapping are HTTPAnt's. Request bodies stream through (declared `Content-Length` is the size hint); a response body of known length keeps its `Content-Length`, unknown length is chunked. Conformance cases 1-12 pass on hyper, axum, actix-web, poem and salvo; the matrix gains the row. salvo keeps its listening socket open until it has finished draining, so on Linux CI (not on Windows) a client could still connect during shutdown and case 9 failed; the adapter hands salvo an acceptor it can close at shutdown, and counts requests (not only connections) so `shutdown()` returns when the last response has been sent. Not published.
 
 ## [0.1.6] - 2026-10-30
 

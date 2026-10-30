@@ -10,6 +10,7 @@ use http_body_util::BodyExt;
 use httpant_core::http;
 use httpant_core::{Body, BoxFuture, BoxService, Bytes, Capabilities, Request, Result, Support};
 use salvo_core::conn::tcp::TcpAcceptor;
+use salvo_core::conn::{Accepted, Acceptor, Holding};
 use salvo_core::http::ResBody;
 use salvo_core::{Depot, FlowCtrl, Handler, Router, Server, Service, async_trait};
 use tokio::net::TcpListener;
@@ -44,6 +45,8 @@ impl ServerAdapter for SalvoAdapter {
             opts.listener.set_nonblocking(true)?;
             let addr = opts.listener.local_addr()?;
             let acceptor = TcpAcceptor::try_from(TcpListener::from_std(opts.listener)?)?;
+            let close = Arc::new(Notify::new());
+            let acceptor = Closable::new(acceptor, Arc::clone(&close));
             let in_flight = Arc::new(InFlight::default());
             let goal = Goal {
                 svc: Arc::new(Mutex::new(svc)),
@@ -57,16 +60,15 @@ impl ServerAdapter for SalvoAdapter {
                 let serving = server.serve(Service::new(router));
                 tokio::pin!(serving);
                 tokio::select! {
-                    _ = &mut serving => { eprintln!("DBG salvo: serve returned by itself"); }
+                    _ = &mut serving => {}
                     _ = stopped => {
                         // Graceful: stop accepting, finish requests in flight, close idle connections, then return.
-                        eprintln!("DBG salvo: stop requested, in_flight={}", in_flight.count.load(Ordering::Acquire));
+                        // salvo keeps the listening socket open until it returns, so a client could still connect while it drains: close it first.
+                        close.notify_one();
                         handle.stop_graceful(None);
                         serving.await;
-                        eprintln!("DBG salvo: serve returned after stop, in_flight={}", in_flight.count.load(Ordering::Acquire));
                         // salvo's own wait counts connections; the contract counts requests, so wait for those too.
                         in_flight.drained().await;
-                        eprintln!("DBG salvo: drained");
                     }
                 }
             });
@@ -106,10 +108,6 @@ struct InFlightGuard(Arc<InFlight>);
 
 impl Drop for InFlightGuard {
     fn drop(&mut self) {
-        eprintln!(
-            "DBG salvo: guard dropped (thread panicking={})",
-            std::thread::panicking()
-        );
         if self.0.count.fetch_sub(1, Ordering::AcqRel) == 1 {
             self.0.changed.notify_waiters();
         }
@@ -126,7 +124,6 @@ impl Handler for Goal {
         ctrl: &mut FlowCtrl,
     ) {
         ctrl.skip_rest();
-        eprintln!("DBG salvo: handle {} {}", req.method(), req.uri().path());
         self.in_flight.count.fetch_add(1, Ordering::AcqRel);
         let guard = InFlightGuard(Arc::clone(&self.in_flight));
         let svc = self
@@ -158,11 +155,6 @@ impl Handler for Goal {
             .oneshot(request)
             .await
             .unwrap_or_else(|e: Infallible| match e {});
-        eprintln!(
-            "DBG salvo: svc answered {} {}",
-            req.method(),
-            req.uri().path()
-        );
         let (parts, body) = out.into_parts();
         res.status_code(parts.status);
         for (name, value) in &parts.headers {
@@ -214,5 +206,54 @@ impl http_body::Body for Declared {
     fn size_hint(&self) -> SizeHint {
         self.declared
             .map_or_else(SizeHint::new, SizeHint::with_exact)
+    }
+}
+
+/// salvo's acceptor, but the listening socket can be closed on request. salvo itself holds the socket until it has finished draining, which
+/// leaves new clients connecting into a queue nobody serves; the contract (conformance case 9) is that they are refused.
+struct Closable {
+    inner: Option<TcpAcceptor>,
+    holdings: Vec<Holding>,
+    close: Arc<Notify>,
+}
+
+impl Closable {
+    fn new(inner: TcpAcceptor, close: Arc<Notify>) -> Self {
+        let holdings = inner.holdings().to_vec();
+        Self {
+            inner: Some(inner),
+            holdings,
+            close,
+        }
+    }
+}
+
+impl Acceptor for Closable {
+    type Coupler = <TcpAcceptor as Acceptor>::Coupler;
+    type Stream = <TcpAcceptor as Acceptor>::Stream;
+
+    fn holdings(&self) -> &[Holding] {
+        &self.holdings
+    }
+
+    async fn accept(
+        &mut self,
+        fuse_policy: Option<salvo_core::fuse::ArcFusePolicy>,
+    ) -> std::io::Result<Accepted<Self::Coupler, Self::Stream>> {
+        let Some(inner) = self.inner.as_mut() else {
+            return std::future::pending().await;
+        };
+        let accepted = tokio::select! {
+            accepted = inner.accept(fuse_policy) => Some(accepted),
+            () = self.close.notified() => None,
+        };
+        match accepted {
+            Some(accepted) => accepted,
+            None => {
+                // Dropping the acceptor closes the socket: from here on connecting is refused.
+                self.inner = None;
+                std::future::pending().await
+            }
+        }
     }
 }
