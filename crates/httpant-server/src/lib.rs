@@ -19,6 +19,8 @@ mod redirect;
 mod salvo_adapter;
 #[cfg(feature = "tls")]
 mod tls;
+#[cfg(feature = "tls")]
+mod tls_audit;
 #[cfg(all(feature = "tls", feature = "axum"))]
 mod tls_listener;
 #[cfg(feature = "warp")]
@@ -50,6 +52,8 @@ pub use tls::{
     CertSource, CertSourceError, DEFAULT_HANDSHAKE_TIMEOUT, FixedCert, ServedCert, ServerCert,
     TlsAcceptor, TlsConnection, read_back,
 };
+#[cfg(feature = "tls")]
+pub use tls_audit::{RefusalReason, TlsAudit, TlsEvent};
 use tokio::net::ToSocketAddrs;
 #[cfg(feature = "warp")]
 pub use warp_adapter::WarpAdapter;

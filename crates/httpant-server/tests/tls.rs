@@ -392,3 +392,179 @@ async fn read_back_of_a_refused_name_or_a_plaintext_port_is_an_error() {
     );
     plain.shutdown().await.unwrap();
 }
+
+#[derive(Clone, Debug, Default)]
+struct Events(Arc<std::sync::Mutex<Vec<httpant_server::TlsEvent>>>);
+
+impl httpant_server::TlsAudit for Events {
+    fn event(&self, event: &httpant_server::TlsEvent) {
+        self.0.lock().unwrap().push(event.clone());
+    }
+}
+
+impl Events {
+    fn take(&self) -> Vec<httpant_server::TlsEvent> {
+        std::mem::take(&mut *self.0.lock().unwrap())
+    }
+
+    /// Wait (up to 5 s) until at least `n` events have arrived, then take them all: the client can see the alert before the server has
+    /// recorded the refusal.
+    async fn wait_take(&self, n: usize) -> Vec<httpant_server::TlsEvent> {
+        for _ in 0..500 {
+            if self.0.lock().unwrap().len() >= n {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        self.take()
+    }
+}
+
+async fn start_audited(
+    id: &str,
+    source: impl CertSource,
+    sink: Events,
+    timeout: Option<Duration>,
+) -> RunningServer {
+    let mut acceptor = TlsAcceptor::new(source).audit(sink);
+    if let Some(t) = timeout {
+        acceptor = acceptor.handshake_timeout(t);
+    }
+    Server::with_adapter(id)
+        .unwrap()
+        .tls(acceptor)
+        .get("/origin", || async { "ok" })
+        .bind("127.0.0.1:0")
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn refused_handshakes_and_a_changed_certificate_are_reported_without_secrets() {
+    use httpant_server::{RefusalReason, TlsEvent};
+    for id in ADAPTERS {
+        let (old, new) = (make_cert("localhost"), make_cert("localhost"));
+        let source = Arc::new(Swappable(std::sync::Mutex::new(Arc::new(old.cert.clone()))));
+        let events = Events::default();
+        let server = start_audited(id, Shared(Arc::clone(&source)), events.clone(), None).await;
+        let c = connector(&[&old.der, &new.der], false);
+
+        // The first certificate for a name is not a "change"; serving it again is not one either.
+        fetch(&server, &c, "localhost", "").await.unwrap();
+        fetch(&server, &c, "localhost", "").await.unwrap();
+        assert_eq!(events.take(), vec![], "{id}: events with nothing to report");
+
+        *source.0.lock().unwrap() = Arc::new(new.cert.clone());
+        fetch(&server, &c, "localhost", "").await.unwrap();
+        fetch(&server, &c, "localhost", "").await.unwrap();
+        let got = events.take();
+        assert_eq!(got.len(), 1, "{id}: {got:?}");
+        match &got[0] {
+            TlsEvent::CertificateChanged {
+                server_name,
+                serial,
+            } => {
+                assert_eq!(server_name.as_deref(), Some("localhost"), "{id}");
+                assert!(!serial.is_empty(), "{id}: no serial");
+            }
+            other => panic!("{id}: {other:?}"),
+        }
+        server.shutdown().await.unwrap();
+
+        // Unknown name and failing source are refusals with their own reason, and name the name.
+        let made = make_cert("localhost");
+        let events = Events::default();
+        let picky = Picky {
+            known: Arc::new(made.cert.clone()),
+            calls: AtomicUsize::new(0),
+            fail: false,
+        };
+        let server = start_audited(id, picky, events.clone(), None).await;
+        let c = connector(&[&made.der], false);
+        assert!(fetch(&server, &c, "other.test", "").await.is_err());
+        assert_eq!(
+            events.wait_take(1).await,
+            vec![TlsEvent::HandshakeRefused {
+                server_name: Some("other.test".to_owned()),
+                reason: RefusalReason::UnknownName,
+            }],
+            "{id}"
+        );
+        server.shutdown().await.unwrap();
+
+        let events = Events::default();
+        let failing = Picky {
+            known: Arc::new(made.cert.clone()),
+            calls: AtomicUsize::new(0),
+            fail: true,
+        };
+        let server = start_audited(id, failing, events.clone(), None).await;
+        assert!(fetch(&server, &c, "localhost", "").await.is_err());
+        let got = events.wait_take(1).await;
+        assert_eq!(
+            got,
+            vec![TlsEvent::HandshakeRefused {
+                server_name: Some("localhost".to_owned()),
+                reason: RefusalReason::SourceFailed,
+            }],
+            "{id}"
+        );
+        // The source's own message ("store unreachable") is not repeated in the event.
+        assert!(!format!("{got:?}").contains("unreachable"), "{id}");
+        // And no event holds key material.
+        let key_body: String = made
+            .key_pem
+            .lines()
+            .filter(|l| !l.starts_with("-----"))
+            .collect();
+        assert!(!format!("{got:?}").contains(&key_body[..32]), "{id}");
+        server.shutdown().await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn a_silent_client_and_a_plaintext_client_are_reported_as_refused() {
+    use httpant_server::{RefusalReason, TlsEvent};
+    for id in ADAPTERS {
+        let events = Events::default();
+        let server = start_audited(
+            id,
+            FixedCert::new(make_cert("localhost").cert),
+            events.clone(),
+            Some(Duration::from_millis(200)),
+        )
+        .await;
+        let mut silent = TcpStream::connect(server.addr()).await.unwrap();
+        let mut buf = [0u8; 8];
+        let _ = tokio::time::timeout(Duration::from_secs(5), silent.read(&mut buf)).await;
+        let got = events.wait_take(1).await;
+        assert_eq!(
+            got,
+            vec![TlsEvent::HandshakeRefused {
+                server_name: None,
+                reason: RefusalReason::Timeout,
+            }],
+            "{id}"
+        );
+
+        let mut plain = TcpStream::connect(server.addr()).await.unwrap();
+        plain
+            .write_all(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+            .await
+            .unwrap();
+        let _ = tokio::time::timeout(Duration::from_secs(5), plain.read(&mut buf)).await;
+        let got = events.wait_take(1).await;
+        assert_eq!(got.len(), 1, "{id}: {got:?}");
+        assert!(
+            matches!(
+                got[0],
+                TlsEvent::HandshakeRefused {
+                    reason: RefusalReason::Protocol,
+                    ..
+                }
+            ),
+            "{id}: {got:?}"
+        );
+        server.shutdown().await.unwrap();
+    }
+}
