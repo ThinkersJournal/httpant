@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt adapter conformance suite (design `docs/HTTPANT-DESIGN.md`, section 6).
 //!
-//! - [`CASES`]: fifteen cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
+//! - [`CASES`]: sixteen cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
 //!   minimal HTTP/1.1 client. The client is deliberately not HTTPAnt, hyper or any adapter, so a defect cannot hide on both ends of a test.
 //! - Every case lists the known-bad [`Mutant`]s it must fail on. [`check_case`] demands both halves: the reference passes **and** every mutant
 //!   fails. A case that passes on its mutant is itself a failing test.
 //! - Cases 1-7 are the old crate's defects restated; cases 8-12 (streaming, shutdown, keep-alive, concurrency, HEAD) need a live connection
-//!   and are in `live`; cases 13 (path encoding), 14 (limits) and 15 (shutdown grace) are HTTPAnt's own rules. [`measure`] turns three of them into the capability matrix (`docs/CAPABILITY-MATRIX.md`).
+//!   and are in `live`; cases 13 (path encoding), 14 (limits), 15 (shutdown grace) and 16 (edge origin) are HTTPAnt's own rules. [`measure`] turns three of them into the capability matrix (`docs/CAPABILITY-MATRIX.md`).
 //!
 //! A new adapter is tested by implementing [`Subject`] for it (or wrapping it in [`AdapterSubject`]) and calling [`run_suite`].
 
@@ -27,7 +27,7 @@ pub use client_suite::{
 };
 pub use live::{Measured, measure};
 pub use mutants::Mutant;
-pub use subject::{AdapterSubject, App, MutantSubject, Subject, adapters, reference};
+pub use subject::{AdapterSubject, App, MutantSubject, Setup, Subject, adapters, reference};
 
 /// One conformance case and the broken variants it must be shown able to fail on.
 #[derive(Clone, Copy)]
@@ -56,8 +56,8 @@ impl std::fmt::Debug for Case {
     }
 }
 
-/// The fifteen cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
-pub const CASES: [Case; 15] = [
+/// The sixteen cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
+pub const CASES: [Case; 16] = [
     Case {
         number: 1,
         id: "method-fidelity",
@@ -172,6 +172,13 @@ pub const CASES: [Case; 15] = [
         mutants: &[Mutant::NoShutdownGrace],
         run: live::shutdown_grace,
     },
+    Case {
+        number: 16,
+        id: "edge-origin",
+        requirement: "the client address and scheme a request reports come from the forwarded headers only when the connection is from a configured trusted proxy; from any other peer the headers are ignored",
+        mutants: &[Mutant::TrustAnyPeer, Mutant::IgnoreTrustedProxies],
+        run: live::edge_origin,
+    },
 ];
 
 /// Run every case against `subject`: `(case number, result)` for each.
@@ -285,6 +292,7 @@ mod tests {
     case_test!(case_13_path_encoding, 12);
     case_test!(case_14_limits, 13);
     case_test!(case_15_shutdown_grace, 14);
+    case_test!(case_16_edge_origin, 15);
 
     #[test]
     fn client_cases_are_numbered_in_order_and_each_mutant_is_used_once() {

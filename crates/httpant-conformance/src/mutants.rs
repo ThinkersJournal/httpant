@@ -46,6 +46,10 @@ pub enum Mutant {
     HeadStripsHeaders,
     /// Shutdown waits for requests in flight for ever, whatever grace period it is given.
     NoShutdownGrace,
+    /// Every peer is believed when it says who the client is, trusted or not.
+    TrustAnyPeer,
+    /// No peer is believed when it says who the client is, the configured proxy included.
+    IgnoreTrustedProxies,
     /// The default limits, except that request targets are not limited.
     NoUriLimit,
     /// The default limits, except that header fields are not counted.
@@ -92,6 +96,8 @@ impl Mutant {
             Mutant::HeadStripsHeaders => "head-strips-headers",
             Mutant::DecodeBeforeRouting => "decode-before-routing",
             Mutant::NoShutdownGrace => "no-shutdown-grace",
+            Mutant::TrustAnyPeer => "trust-any-peer",
+            Mutant::IgnoreTrustedProxies => "ignore-trusted-proxies",
             Mutant::NoUriLimit => "no-uri-limit",
             Mutant::NoHeaderCountLimit => "no-header-count-limit",
             Mutant::NoHeaderBytesLimit => "no-header-bytes-limit",
@@ -109,6 +115,8 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         Mutant::NoMiddleware
         | Mutant::AbortOnShutdown
         | Mutant::NoShutdownGrace
+        | Mutant::TrustAnyPeer
+        | Mutant::IgnoreTrustedProxies
         | Mutant::NoUriLimit
         | Mutant::NoHeaderCountLimit
         | Mutant::NoHeaderBytesLimit

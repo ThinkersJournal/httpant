@@ -8,7 +8,7 @@ Status: `next` (do now, in this order), `later`, `blocked` (needs a decision or 
 | 1 | Percent-decoding of path captures | done | merged (#17), 0.2.0 (Breaking). Rule in CHANGELOG 0.2.0. |
 | 2 | Limits in `ServeOptions` (target, header count and bytes, body) | done | merged (#18), 0.3.0 (Breaking: 2 MiB body default). Case 14. |
 | 3 | Shutdown grace period (a request that never finishes must not hold `shutdown()` forever) | done | 0.4.0 (Breaking). 30 s default; case 15. |
-| 4 | TLS hook with WebHostAnt | blocked | Ask the WebHostAnt lane what it needs first. HTTPAnt must not become a TLS stack: the hook takes an acceptor, never certificates. Client `https://` is `UnsupportedScheme` until it exists. |
+| 4 | TLS: need list from WebHostAnt (WebHostAnt#19, `docs/TLS-NEED-LIST.md`). Slices: (a) edge mode + trusted-proxy scheme/client address (needs 1-3), then ping WebHostAnt; (b) `CertSource` trait, feature `tls`, rustls only, HTTPAnt-owned acceptor below the adapters, served-cert read-back (needs 4-16, 19, 20, 22) with the ACME challenge-prefix handler (14); (c) the rest. | in progress | Slice (a) edge mode done in 0.5.0 (case 16): ping WebHostAnt. HTTPAnt must not become a TLS stack (no ACME, storage, renewal). actix/warp likely 'edge mode only' in the conformance table. Adapter TLS capabilities are recalled, not run. |
 | 5 | Benchmark harness (adapter vs the bare framework) | later | Last. `docs/BENCHMARKS.md` has the TechEmpower reading to compare against. |
 | 6 | **Run rocket**: an unsupported-method probe (PROPFIND) against a real rocket 0.5.x | later | Turns "source reading, not run" (CHANGELOG 0.1.9, design section 8) into a measurement. If it answers 400 as the source says, rocket stays out and the design row says "measured". |
 | 7 | `Path`/`Query` extractors | later | Typed access to `PathParams` and the query string. |
@@ -16,3 +16,4 @@ Status: `next` (do now, in this order), `later`, `blocked` (needs a decision or 
 | 9 | `LocalHandler` capability (non-`Send` handlers, actix) | later | Compile-time or startup error elsewhere, never a silent downgrade. |
 | 10 | Read ConfigurAnt's API before wiring settings | later | Design section 10; UNVERIFIED. |
 | 11 | Replace `PATENT-SWEEP.md` with a real sweep | blocked | Nothing is published until it is done (`docs/PATENT-SWEEP.md`). |
+| 12 | Flaky test: `the_whole_suite_passes_on_every_adapter` failed once in a full `cargo test --workspace` on Windows (2026-10-30, at 0.4.0 PR head be84ee9), not reproduced in 5 later runs; failure message not captured | later | Evidence needed: run the workspace tests in a loop under load, keep the output, name the case. |

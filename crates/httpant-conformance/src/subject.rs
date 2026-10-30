@@ -4,7 +4,7 @@ use std::time::Duration;
 use httpant_core::{BoxFuture, Capabilities, LayerFn, Result, Router, apply_layers};
 use httpant_server::{
     ActixAdapter, AxumAdapter, HyperAdapter, PoemAdapter, RunningServer, SalvoAdapter,
-    ServeOptions, ServerAdapter, WarpAdapter,
+    ServeOptions, ServerAdapter, TrustedProxies, WarpAdapter,
 };
 
 use crate::mutants::{self, Mutant};
@@ -22,16 +22,13 @@ pub trait Subject: Send + Sync {
     /// A name for failure messages.
     fn name(&self) -> String;
 
-    /// Start serving `app` on a free local port, with this shutdown grace period (`None`: wait for ever).
-    fn start_with_grace(
-        &self,
-        app: App,
-        grace: Option<Duration>,
-    ) -> BoxFuture<'_, Result<RunningServer>>;
+    /// Start serving `app` on a free local port, set up as `setup` says.
+    fn start_with(&self, app: App, setup: Setup) -> BoxFuture<'_, Result<RunningServer>>;
 
-    /// Start serving `app` on a free local port. The grace period is long (the cases that are not about it must never meet it).
+    /// Start serving `app` on a free local port with the default [`Setup`]: a long grace period (the cases that are not about it must never
+    /// meet it) and no trusted proxy.
     fn start(&self, app: App) -> BoxFuture<'_, Result<RunningServer>> {
-        self.start_with_grace(app, Some(LONG_GRACE))
+        self.start_with(app, Setup::default())
     }
 
     /// What the subject says it can do, if it is a real adapter (a mutant says nothing).
@@ -43,10 +40,29 @@ pub trait Subject: Send + Sync {
 /// The grace period of every case that is not about the grace period.
 const LONG_GRACE: Duration = Duration::from_secs(60);
 
-fn options(listener: std::net::TcpListener, grace: Option<Duration>) -> ServeOptions {
-    match grace {
-        Some(period) => ServeOptions::new(listener).shutdown_grace(period),
-        None => ServeOptions::new(listener).no_shutdown_grace(),
+/// What a case may choose about the server it starts.
+#[derive(Clone, Debug)]
+pub struct Setup {
+    /// The shutdown grace period (`None`: wait for ever).
+    pub grace: Option<Duration>,
+    /// Peers trusted to forward the client's address and scheme.
+    pub trusted_proxies: TrustedProxies,
+}
+
+impl Default for Setup {
+    fn default() -> Self {
+        Self {
+            grace: Some(LONG_GRACE),
+            trusted_proxies: TrustedProxies::none(),
+        }
+    }
+}
+
+fn options(listener: std::net::TcpListener, setup: Setup) -> ServeOptions {
+    let opts = ServeOptions::new(listener).trusted_proxies(setup.trusted_proxies);
+    match setup.grace {
+        Some(period) => opts.shutdown_grace(period),
+        None => opts.no_shutdown_grace(),
     }
 }
 
@@ -66,14 +82,10 @@ impl<A: ServerAdapter> Subject for AdapterSubject<A> {
         Some(self.0.capabilities())
     }
 
-    fn start_with_grace(
-        &self,
-        app: App,
-        grace: Option<Duration>,
-    ) -> BoxFuture<'_, Result<RunningServer>> {
+    fn start_with(&self, app: App, setup: Setup) -> BoxFuture<'_, Result<RunningServer>> {
         Box::pin(async move {
             let svc = apply_layers(app.router.into_service(), app.layers);
-            self.0.serve(svc, options(free_listener()?, grace)).await
+            self.0.serve(svc, options(free_listener()?, setup)).await
         })
     }
 }
@@ -103,17 +115,21 @@ impl Subject for MutantSubject {
         format!("mutant `{}`", self.0.id())
     }
 
-    fn start_with_grace(
-        &self,
-        app: App,
-        grace: Option<Duration>,
-    ) -> BoxFuture<'_, Result<RunningServer>> {
-        // The mutant that waits for ever ignores the period it was asked for.
-        let grace = if self.0 == Mutant::NoShutdownGrace {
-            None
-        } else {
-            grace
-        };
+    fn start_with(&self, app: App, mut setup: Setup) -> BoxFuture<'_, Result<RunningServer>> {
+        match self.0 {
+            // Waits for ever, whatever period it is asked for.
+            Mutant::NoShutdownGrace => setup.grace = None,
+            // Believes whatever any peer says about the client.
+            Mutant::TrustAnyPeer => {
+                setup.trusted_proxies = TrustedProxies::none()
+                    .parse("0.0.0.0/0")
+                    .and_then(|t| t.parse("::/0"))
+                    .expect("valid networks");
+            }
+            // Believes nobody, the proxy it was told to trust included.
+            Mutant::IgnoreTrustedProxies => setup.trusted_proxies = TrustedProxies::none(),
+            _ => {}
+        }
         Box::pin(async move {
             let svc = if self.0 == Mutant::NoMiddleware {
                 app.router.into_service()
@@ -127,7 +143,7 @@ impl Subject for MutantSubject {
             HyperAdapter
                 .serve(
                     svc,
-                    options(free_listener()?, grace).limits(self.0.limits()),
+                    options(free_listener()?, setup).limits(self.0.limits()),
                 )
                 .await
         })

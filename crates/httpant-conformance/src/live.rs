@@ -13,7 +13,8 @@ use tokio::sync::{Notify, Semaphore};
 
 use crate::app;
 use crate::raw::{Conn, RawRequest, send};
-use crate::subject::Subject;
+use crate::subject::{Setup, Subject};
+use httpant_server::TrustedProxies;
 
 type Outcome = Result<(), String>;
 
@@ -423,7 +424,13 @@ pub fn shutdown_grace(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
         const GRACE: Duration = Duration::from_millis(1500);
         let (app, gates) = app::app_with_gates();
         let server = s
-            .start_with_grace(app, Some(GRACE))
+            .start_with(
+                app,
+                Setup {
+                    grace: Some(GRACE),
+                    ..Setup::default()
+                },
+            )
             .await
             .map_err(|e| format!("could not start: {e}"))?;
         let addr = server.addr();
@@ -466,6 +473,70 @@ pub fn shutdown_grace(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
                 res.status
             );
         }
+        Ok(())
+    })
+}
+
+/// Case 16: a request says who sent it only as far as HTTPAnt trusts the peer. The test client connects from 127.0.0.1 and claims, with
+/// `X-Forwarded-For` and `X-Forwarded-Proto`, to be somebody else behind an `https` edge: believed only when 127.0.0.1 is a configured
+/// trusted proxy, and always reported as the peer when it is not.
+pub fn edge_origin(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
+    Box::pin(async move {
+        async fn ask(
+            s: &dyn Subject,
+            trusted: Option<&str>,
+            headers: &[(&str, &str)],
+        ) -> Result<String, String> {
+            let mut setup = Setup::default();
+            if let Some(net) = trusted {
+                setup.trusted_proxies = TrustedProxies::none()
+                    .parse(net)
+                    .map_err(|e| format!("bad test network: {e}"))?;
+            }
+            let (app, _gates) = app::app_with_gates();
+            let server = s
+                .start_with(app, setup)
+                .await
+                .map_err(|e| format!("could not start: {e}"))?;
+            let mut req = RawRequest::new("GET", "/origin");
+            for (k, v) in headers {
+                req = req.header(k, v);
+            }
+            let res = send(server.addr(), &req)
+                .await
+                .map_err(|e| format!("GET /origin: {e}"))?;
+            let _ = server.shutdown().await;
+            ensure!(res.status == 200, "GET /origin: status {}", res.status);
+            Ok(text(&res.body))
+        }
+        let claim = [
+            ("x-forwarded-for", "6.6.6.6, 203.0.113.9"),
+            ("x-forwarded-proto", "https"),
+        ];
+        // Nobody trusted (the default): the claim is ignored and the peer is the client.
+        let got = ask(s, None, &claim).await?;
+        ensure!(
+            got == "127.0.0.1 http direct",
+            "with no trusted proxy the forwarded headers must be ignored: expected `127.0.0.1 http direct`, got `{got}`"
+        );
+        // A trusted network that does not contain the peer: still ignored.
+        let got = ask(s, Some("10.0.0.0/8"), &claim).await?;
+        ensure!(
+            got == "127.0.0.1 http direct",
+            "a proxy network that does not contain the peer must not be believed: got `{got}`"
+        );
+        // The peer is a trusted proxy: the client is the rightmost hop that is not a proxy, and the scheme is the forwarded one.
+        let got = ask(s, Some("127.0.0.0/8"), &claim).await?;
+        ensure!(
+            got == "203.0.113.9 https proxy",
+            "a trusted proxy must be believed: expected `203.0.113.9 https proxy`, got `{got}`"
+        );
+        // A trusted proxy that forwards nothing is its own client, over plain HTTP.
+        let got = ask(s, Some("127.0.0.1"), &[]).await?;
+        ensure!(
+            got == "127.0.0.1 http proxy",
+            "a trusted proxy that forwards nothing: expected `127.0.0.1 http proxy`, got `{got}`"
+        );
         Ok(())
     })
 }
