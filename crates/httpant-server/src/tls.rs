@@ -194,3 +194,131 @@ fn config_for(cert: &ServerCert) -> io::Result<ServerConfig> {
     config.alpn_protocols = vec![b"http/1.1".to_vec()];
     Ok(config)
 }
+
+/// What a live TLS listener actually presented for a server name, read back over a real handshake (need 22: the state is what is served,
+/// not what the [`CertSource`] says it holds).
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ServedCert {
+    /// The server name asked for (sent as SNI).
+    pub server_name: String,
+    /// The leaf's issuer, as an RFC 4514-style string.
+    pub issuer: String,
+    /// The leaf's subject.
+    pub subject: String,
+    /// Start of validity, seconds since the Unix epoch.
+    pub not_before: i64,
+    /// End of validity, seconds since the Unix epoch.
+    pub not_after: i64,
+    /// Certificates in the chain the server sent.
+    pub chain_len: usize,
+    /// The leaf certificate, DER.
+    pub leaf_der: Vec<u8>,
+    /// The TLS version negotiated, `"TLSv1.3"` or `"TLSv1.2"`.
+    pub protocol: String,
+    /// The ALPN protocol negotiated (for example `http/1.1`), if any.
+    pub alpn: Option<String>,
+}
+
+/// Connect to `addr`, handshake with SNI `server_name`, read what the listener presents, and hang up. No request is sent. **The
+/// certificate is not validated** (that is the point: this reports what is served, including an expired or self-signed certificate), so the
+/// result must never be used to decide whether to trust a peer. The handshake is bounded by `timeout`.
+pub async fn read_back(
+    addr: std::net::SocketAddr,
+    server_name: &str,
+    timeout: Duration,
+) -> io::Result<ServedCert> {
+    let name = rustls::pki_types::ServerName::try_from(server_name.to_owned())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "not a valid server name"))?;
+    let provider = Arc::new(provider::default_provider());
+    let mut config = rustls::ClientConfig::builder_with_provider(Arc::clone(&provider))
+        .with_protocol_versions(&[&version::TLS13, &version::TLS12])
+        .map_err(io::Error::other)?
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(AcceptAnything(provider)))
+        .with_no_client_auth();
+    // Offer what the server offers, so the ALPN it would choose is visible.
+    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    let probe = async {
+        let tcp = TcpStream::connect(addr).await?;
+        let tls = tokio_rustls::TlsConnector::from(Arc::new(config))
+            .connect(name, tcp)
+            .await?;
+        let (_, conn) = tls.get_ref();
+        let chain = conn
+            .peer_certificates()
+            .ok_or_else(|| io::Error::other("the server presented no certificate"))?;
+        let leaf = chain
+            .first()
+            .ok_or_else(|| io::Error::other("the server presented an empty chain"))?;
+        let (_, x509) = x509_parser::parse_x509_certificate(leaf.as_ref())
+            .map_err(|e| io::Error::other(format!("served certificate does not parse: {e}")))?;
+        Ok(ServedCert {
+            server_name: server_name.to_owned(),
+            issuer: x509.issuer().to_string(),
+            subject: x509.subject().to_string(),
+            not_before: x509.validity().not_before.timestamp(),
+            not_after: x509.validity().not_after.timestamp(),
+            chain_len: chain.len(),
+            leaf_der: leaf.as_ref().to_vec(),
+            protocol: conn
+                .protocol_version()
+                .map_or_else(String::new, |v| format!("{v:?}")),
+            alpn: conn
+                .alpn_protocol()
+                .map(|p| String::from_utf8_lossy(p).into_owned()),
+        })
+    };
+    tokio::time::timeout(timeout, probe)
+        .await
+        .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "TLS read-back timed out"))?
+}
+
+/// Accepts every certificate: only [`read_back`] uses it, to look at what is served.
+#[derive(Debug)]
+struct AcceptAnything(Arc<rustls::crypto::CryptoProvider>);
+
+impl rustls::client::danger::ServerCertVerifier for AcceptAnything {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &rustls::pki_types::ServerName<'_>,
+        _ocsp: &[u8],
+        _now: rustls::pki_types::UnixTime,
+    ) -> std::result::Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> std::result::Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls12_signature(
+            message,
+            cert,
+            dss,
+            &self.0.signature_verification_algorithms,
+        )
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &rustls::DigitallySignedStruct,
+    ) -> std::result::Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        rustls::crypto::verify_tls13_signature(
+            message,
+            cert,
+            dss,
+            &self.0.signature_verification_algorithms,
+        )
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        self.0.signature_verification_algorithms.supported_schemes()
+    }
+}

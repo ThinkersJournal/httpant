@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2026-10-30
+
+- `httpant_server::read_back(addr, server_name, timeout)` (feature `tls`), WebHostAnt need 22: it connects to the **live listener**, handshakes with that SNI name and returns a `ServedCert` (issuer, subject, not-before and not-after as Unix seconds, chain length, leaf DER, TLS version, ALPN) of what is actually served, so a renewal is proved from the listener and not from the source's say-so. No request is sent. It does **not** validate the certificate (an expired or self-signed one is reported as it is), so it is for reporting only and must not decide trust. Parsing uses `x509-parser` (no default features). Tests on hyper and axum: the leaf equals the served one, a swapped certificate shows as swapped on the next read-back, a refused name and a plaintext port are errors. Not published.
+
 ## [0.5.3] - 2026-10-30
 
 - `docs/PATENT-SWEEP.md` addendum (PM ruling): the two unread patents are claim-read, 13 more queries across Google Patents and Espacenet/PatentScope/USPTO for every idea, five more patents claim-read (12 in all), and the file says exactly what the search tool could and could not do (Espacenet's own search was not usable; no classification-code search). No verdict changes. Documentation only. Not published.
