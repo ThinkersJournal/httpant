@@ -17,7 +17,7 @@ pub use bytes::Bytes;
 pub use http;
 
 pub use body::{Body, BoxError};
-pub use capabilities::{Capabilities, DEFAULT_BODY_LIMIT, Support};
+pub use capabilities::{Capabilities, ClientCapabilities, DEFAULT_BODY_LIMIT, Support};
 pub use error::{Error, Result};
 pub use handler::Handler;
 pub use layer::{LayerFn, apply_layers, layer_fn};

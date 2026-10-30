@@ -12,6 +12,7 @@
 
 mod app;
 mod cases;
+mod client_suite;
 mod live;
 mod mutants;
 pub mod raw;
@@ -19,6 +20,11 @@ mod subject;
 
 use httpant_core::BoxFuture;
 
+pub use client_suite::{
+    CLIENT_CASES, ClientAdapterSubject, ClientCase, ClientMeasured, ClientMutant,
+    ClientMutantSubject, ClientSubject, check_client_case, client_adapters, client_reference,
+    measure_client, run_client_suite,
+};
 pub use live::{Measured, measure};
 pub use mutants::Mutant;
 pub use subject::{AdapterSubject, App, MutantSubject, Subject, adapters, reference};
@@ -251,6 +257,91 @@ mod tests {
     case_test!(case_11_concurrency, 10);
     case_test!(case_12_head, 11);
 
+    #[test]
+    fn client_cases_are_numbered_in_order_and_each_mutant_is_used_once() {
+        for (i, c) in CLIENT_CASES.iter().enumerate() {
+            assert_eq!(usize::from(c.number), i + 1, "{}", c.id);
+            assert!(!c.mutants.is_empty(), "{} has no mutant", c.id);
+        }
+        let all = [
+            ClientMutant::FoldMethodToGet,
+            ClientMutant::CollapseHeaders,
+            ClientMutant::LossyBodies,
+            ClientMutant::ClampStatus,
+            ClientMutant::BufferResponseBody,
+            ClientMutant::BufferRequestBody,
+            ClientMutant::NoConnectionReuse,
+        ];
+        for m in all {
+            let users = CLIENT_CASES
+                .iter()
+                .filter(|c| c.mutants.contains(&m))
+                .count();
+            assert_eq!(
+                users,
+                1,
+                "client mutant `{}` is used by {users} cases",
+                m.id()
+            );
+        }
+    }
+
+    macro_rules! client_case_test {
+        ($name:ident, $index:expr) => {
+            #[tokio::test]
+            async fn $name() {
+                let case = &CLIENT_CASES[$index];
+                if let Err(e) = check_client_case(case, &client_reference()).await {
+                    panic!("{e}");
+                }
+            }
+        };
+    }
+
+    client_case_test!(client_case_1_method_fidelity, 0);
+    client_case_test!(client_case_2_headers, 1);
+    client_case_test!(client_case_3_bodies, 2);
+    client_case_test!(client_case_4_statuses, 3);
+    client_case_test!(client_case_5_streaming_response, 4);
+    client_case_test!(client_case_6_streaming_request, 5);
+    client_case_test!(client_case_7_connection_reuse, 6);
+
+    #[tokio::test]
+    async fn the_whole_client_suite_passes_on_every_client_adapter() {
+        for subject in &client_adapters() {
+            let failed: Vec<_> = run_client_suite(subject.as_ref())
+                .await
+                .into_iter()
+                .filter(|(_, r)| r.is_err())
+                .collect();
+            assert!(failed.is_empty(), "{}: {failed:?}", subject.name());
+        }
+    }
+
+    #[tokio::test]
+    async fn declared_client_capabilities_match_the_measured_ones() {
+        for subject in &client_adapters() {
+            let declared = subject.declared().expect("an adapter declares");
+            let m = measure_client(subject.as_ref()).await;
+            assert_eq!(
+                (
+                    declared.streaming_request_bodies,
+                    declared.streaming_response_bodies,
+                    declared.connection_reuse,
+                    declared.follows_redirects
+                ),
+                (
+                    m.streaming_request_bodies,
+                    m.streaming_response_bodies,
+                    m.connection_reuse,
+                    m.follows_redirects
+                ),
+                "{}: declared client capabilities differ from what the suite measured",
+                subject.name()
+            );
+        }
+    }
+
     #[tokio::test]
     async fn declared_capabilities_match_the_measured_ones() {
         for subject in &adapters() {
@@ -302,6 +393,29 @@ mod tests {
         let table = format!(
             "| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | default body limit (bytes) |\n|---|---|---|---|---|---|\n{rows}"
         );
+        let mut client_rows = String::new();
+        for subject in &client_adapters() {
+            let m = measure_client(subject.as_ref()).await;
+            let declared = subject.declared().expect("an adapter declares");
+            let cell = |s: httpant_core::Support| match s {
+                httpant_core::Support::Yes => "yes",
+                httpant_core::Support::No => "no",
+                httpant_core::Support::Unknown => "unknown",
+            };
+            client_rows.push_str(&format!(
+                "| {} | {} | {} | {} | {} | {} | {} |\n",
+                subject.name(),
+                cell(m.streaming_request_bodies),
+                cell(m.streaming_response_bodies),
+                cell(m.connection_reuse),
+                cell(m.follows_redirects),
+                cell(declared.tls),
+                declared.default_body_limit,
+            ));
+        }
+        let client_table = format!(
+            "| client adapter | streaming request bodies | streaming response bodies | connection reuse | follows redirects | TLS | default body limit (bytes) |\n|---|---|---|---|---|---|---|\n{client_rows}"
+        );
         let path = concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../docs/CAPABILITY-MATRIX.md"
@@ -309,19 +423,21 @@ mod tests {
         let current = std::fs::read_to_string(path)
             .unwrap_or_default()
             .replace("\r\n", "\n");
-        let start = "<!-- matrix:start -->\n";
-        let end = "<!-- matrix:end -->";
-        let (Some(a), Some(b)) = (current.find(start), current.find(end)) else {
-            panic!("docs/CAPABILITY-MATRIX.md has no matrix markers");
-        };
+        let mut updated = current.clone();
+        for (name, table) in [("matrix", &table), ("client-matrix", &client_table)] {
+            let start = format!("<!-- {name}:start -->\n");
+            let end = format!("<!-- {name}:end -->");
+            let (Some(a), Some(b)) = (updated.find(&start), updated.find(&end)) else {
+                panic!("docs/CAPABILITY-MATRIX.md has no `{name}` markers");
+            };
+            updated = format!("{}{start}{table}{}", &updated[..a], &updated[b..]);
+        }
         if std::env::var_os("HTTPANT_BLESS").is_some() {
-            let updated = format!("{}{start}{table}{}", &current[..a], &current[b..]);
-            std::fs::write(path, updated).unwrap();
+            std::fs::write(path, &updated).unwrap();
             return;
         }
         assert_eq!(
-            &current[a + start.len()..b],
-            table,
+            current, updated,
             "docs/CAPABILITY-MATRIX.md is out of date: run `HTTPANT_BLESS=1 cargo test -p httpant-conformance`"
         );
     }

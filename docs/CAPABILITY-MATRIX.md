@@ -12,7 +12,17 @@ rewrites it. Each adapter's `capabilities()` is compared with the measurement by
 | axum | yes | yes | yes | no | 2097152 |
 <!-- matrix:end -->
 
-- *streaming request bodies* / *streaming response bodies*: conformance case 8. The first chunk crosses the connection while the other side is still
+Client adapters, measured by the client cases against a raw-TCP peer (`client_suite.rs`):
+
+<!-- client-matrix:start -->
+| client adapter | streaming request bodies | streaming response bodies | connection reuse | follows redirects | TLS | default body limit (bytes) |
+|---|---|---|---|---|---|---|
+| hyper | yes | yes | yes | no | no | 2097152 |
+<!-- client-matrix:end -->
+
+- *connection reuse*: client case 7 (two requests to one host, one connection). *follows redirects*: a probe, not a requirement; an adapter either
+  follows a `302` or returns it as it is, and half-following is an error. *TLS*: declared, not measured (the reference client has no TLS connector yet).
+- *streaming request bodies* / *streaming response bodies* (server): conformance case 8. The first chunk crosses the connection while the other side is still
   producing (response) or sending (request); gated by handler signals, not by sleeps.
 - *graceful shutdown*: case 9. After shutdown is requested: a request in flight completes, an idle keep-alive connection is closed, new
   connections are refused, and `shutdown()` returns only after the request completed. There is no grace period yet.

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-10-30
+
+- Slice 3: the client half. New crate `httpant-client`: `Client` (`get`/`post`/`put`/`delete`/`head`/`request`, repeatable raw-byte headers, byte or streaming bodies, `timeout`), the `ClientAdapter` trait, and the hyper-util reference adapter (plain `http://`; `https://` is a named `UnsupportedScheme` error until the TLS hook exists; redirects are returned, not followed, and declared so). Response bodies are read only with a limit (`bytes`/`text` use the 2 MiB default, `*_limited` take one). `httpant-core` gains `ClientCapabilities` and the errors `InvalidUrl`, `InvalidHeader`, `UnsupportedScheme`, `Timeout`, `Request`.
+- Client conformance (`httpant-conformance`): 7 cases against a raw-TCP peer written in the suite, never HTTPAnt's own server: method fidelity, headers, bodies, statuses, streaming response, streaming request, connection reuse; 7 known-bad client mutants, each shown to fail its case for the intended reason. A redirect probe measures follow/no-follow. The client matrix is in `docs/CAPABILITY-MATRIX.md`, rendered by the same stale-document test, and declared client capabilities must equal the measured ones. Timeouts live above the adapter, so they are tested in `httpant-client`, not as a case.
+- The hello-world example now fetches with `Client` (no raw socket).
+- `SECURITY.md` (new): supported versions, quoted from the portfolio support text, and a private-report route. README: `web-server-abstraction` 1.0.x is end of life and unsupported; use `httpant`. Not published.
+
 ## [0.1.3] - 2026-10-30
 
 - Slice 2b: conformance cases 8-12 on every adapter. 8 streaming (response chunks and request chunks cross the wire while the other side is still producing them, gated by handler signals, not sleeps), 9 graceful shutdown, 10 keep-alive / `Connection: close` / `Expect: 100-continue`, 11 concurrency (1,000 requests, 250 at a time, each answered with its own number, handlers overlap), 12 HEAD. Six new known-bad mutants, each shown to fail its case. First capability matrix (`docs/CAPABILITY-MATRIX.md`), rendered from the suite by a test that fails when the document is stale; each adapter's declared `Capabilities` must equal what the suite measured.
