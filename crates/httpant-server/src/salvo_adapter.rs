@@ -106,6 +106,7 @@ struct InFlightGuard(Arc<InFlight>);
 
 impl Drop for InFlightGuard {
     fn drop(&mut self) {
+        eprintln!("DBG salvo: guard dropped (thread panicking={})", std::thread::panicking());
         if self.0.count.fetch_sub(1, Ordering::AcqRel) == 1 {
             self.0.changed.notify_waiters();
         }
@@ -122,6 +123,7 @@ impl Handler for Goal {
         ctrl: &mut FlowCtrl,
     ) {
         ctrl.skip_rest();
+        eprintln!("DBG salvo: handle {} {}", req.method(), req.uri().path());
         self.in_flight.count.fetch_add(1, Ordering::AcqRel);
         let guard = InFlightGuard(Arc::clone(&self.in_flight));
         let svc = self
@@ -153,6 +155,7 @@ impl Handler for Goal {
             .oneshot(request)
             .await
             .unwrap_or_else(|e: Infallible| match e {});
+        eprintln!("DBG salvo: svc answered {} {}", req.method(), req.uri().path());
         let (parts, body) = out.into_parts();
         res.status_code(parts.status);
         for (name, value) in &parts.headers {
