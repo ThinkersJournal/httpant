@@ -385,15 +385,30 @@ pub struct Measured {
     pub graceful_shutdown: Support,
 }
 
-fn support(r: &Outcome) -> Support {
-    if r.is_ok() { Support::Yes } else { Support::No }
+/// `Yes` when the probe passed. A probe that fails says why on stderr, which a failing test prints: a bare `No` hides the reason.
+fn support(probe: &str, subject: &str, r: &Outcome) -> Support {
+    match r {
+        Ok(()) => Support::Yes,
+        Err(why) => {
+            eprintln!("capability probe `{probe}` failed on {subject}: {why}");
+            Support::No
+        }
+    }
 }
 
 /// Run the capability probes against `subject`.
 pub async fn measure(s: &dyn Subject) -> Measured {
     Measured {
-        streaming_request_bodies: support(&streaming_request(s).await),
-        streaming_response_bodies: support(&streaming_response(s).await),
-        graceful_shutdown: support(&graceful_shutdown(s).await),
+        streaming_request_bodies: support(
+            "streaming request bodies",
+            &s.name(),
+            &streaming_request(s).await,
+        ),
+        streaming_response_bodies: support(
+            "streaming response bodies",
+            &s.name(),
+            &streaming_response(s).await,
+        ),
+        graceful_shutdown: support("graceful shutdown", &s.name(), &graceful_shutdown(s).await),
     }
 }
