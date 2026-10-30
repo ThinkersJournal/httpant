@@ -3,7 +3,7 @@
 
 use httpant_core::BoxFuture;
 
-use crate::app::{self, binary_body};
+use crate::app::{self, BODY_LIMIT, binary_body};
 use crate::raw::{RawRequest, RawResponse, send};
 use crate::subject::Subject;
 
@@ -166,18 +166,18 @@ pub fn bodies(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
             res.status,
             text(&res)
         );
-        // The request declares 10 MiB and sends only its head and 16 KiB: a server that refuses at the limit answers 413 without reading the
+        // The request declares 1.5 MiB (over the handler's 1 MiB, under the server's 2 MiB default limit, so it is the handler's limit being tested) and sends only its head and 16 KiB: a server that refuses at the limit answers 413 without reading the
         // rest, and the client has nothing unread in flight that a connection reset could use to destroy the answer.
         let res = ask(
             server.addr(),
             RawRequest::new("POST", "/echo")
-                .header("Content-Length", (10 * 1024 * 1024).to_string())
+                .header("Content-Length", (BODY_LIMIT + BODY_LIMIT / 2).to_string())
                 .body(vec![b'x'; 16 * 1024]),
         )
         .await?;
         ensure!(
             res.status == 413,
-            "a declared 10 MB body over a 1 MiB limit: expected 413, got {}",
+            "a declared 1.5 MiB body over a 1 MiB handler limit: expected 413, got {}",
             res.status
         );
         let res = ask(server.addr(), RawRequest::new("GET", "/bin")).await?;
@@ -260,6 +260,119 @@ pub fn path_encoding(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
                     text(&res)
                 );
             }
+        }
+        let _ = server.shutdown().await;
+        Ok(())
+    })
+}
+
+/// Case 14: the server's default limits hold. The sizes are chosen below every adapter's own ceiling, so it is HTTPAnt's limit that answers.
+pub fn limits(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
+    Box::pin(async move {
+        let server = serve!(s);
+        let addr = server.addr();
+        let d = httpant_server::Limits::default();
+        let max_uri = d.max_uri_len.expect("a default");
+        let max_header_bytes = d.max_header_bytes.expect("a default");
+        let max_body = d.max_body_bytes.expect("a default");
+
+        // Request target: at the limit is served, one over is 414.
+        for (extra, want) in [(0usize, 200u16), (1, 414)] {
+            let target = format!("/m?q={}", "a".repeat(max_uri - "/m?q=".len() + extra));
+            let res = ask(addr, RawRequest::new("GET", target.as_bytes())).await?;
+            ensure!(
+                res.status == want,
+                "a request target of {} bytes (limit {max_uri}): expected {want}, got {}",
+                target.len(),
+                res.status
+            );
+        }
+
+        // Header fields: a few are served, far more than the default are 431.
+        for (count, want) in [
+            (20usize, 200u16),
+            (d.max_headers.expect("a default") + 10, 431),
+        ] {
+            let mut req = RawRequest::new("GET", "/m");
+            for i in 0..count {
+                req = req.header(format!("x-limit-{i}"), "v");
+            }
+            let res = ask(addr, req).await?;
+            ensure!(
+                res.status == want,
+                "{count} header fields: expected {want}, got {}",
+                res.status
+            );
+        }
+
+        // Header bytes: one field under the limit is served, one over is 431.
+        for (size, want) in [
+            (max_header_bytes - 1024, 200u16),
+            (max_header_bytes + 1024, 431),
+        ] {
+            let res = ask(
+                addr,
+                RawRequest::new("GET", "/m").header("x-big", "b".repeat(size)),
+            )
+            .await?;
+            ensure!(
+                res.status == want,
+                "a header field of {size} bytes (limit {max_header_bytes} for all): expected {want}, got {}",
+                res.status
+            );
+        }
+
+        // Body, declared: refused on the head. The request announces 3 MiB and sends 16 KiB (a server that refuses early and closes with
+        // unread data can reset the connection; a 413 that arrives is the answer).
+        let res = ask(
+            addr,
+            RawRequest::new("POST", "/sink")
+                .header("Content-Length", (max_body + 1024 * 1024).to_string())
+                .body(vec![b'x'; 16 * 1024]),
+        )
+        .await?;
+        ensure!(
+            res.status == 413,
+            "a declared body of {} bytes (limit {max_body}): expected 413, got {}",
+            max_body + 1024 * 1024,
+            res.status
+        );
+
+        // Body, streamed (chunked, so there is nothing to announce): exactly the limit is served, one byte over is 413.
+        for (total, want) in [(max_body, 200u16), (max_body + 1, 413)] {
+            let mut conn = crate::raw::Conn::open(addr)
+                .await
+                .map_err(|e| format!("could not connect: {e}"))?
+                .with_timeout(std::time::Duration::from_secs(5));
+            conn.write(
+                b"POST /sink HTTP/1.1\r\nHost: conformance\r\nTransfer-Encoding: chunked\r\n\r\n",
+            )
+            .await
+            .map_err(|e| format!("send head: {e}"))?;
+            let piece = 64 * 1024u64;
+            let mut sent = 0u64;
+            while sent < total {
+                let n = piece.min(total - sent);
+                let mut chunk = format!("{n:x}\r\n").into_bytes();
+                chunk.extend(std::iter::repeat_n(b'x', n as usize));
+                chunk.extend_from_slice(b"\r\n");
+                // The server may answer and stop reading at the limit; a write that fails after that is the answer being in flight.
+                if conn.write(&chunk).await.is_err() {
+                    break;
+                }
+                sent += n;
+            }
+            let _ = conn.write(b"0\r\n\r\n").await;
+            let res = conn
+                .response("POST")
+                .await
+                .map_err(|e| format!("a streamed body of {total} bytes: no answer: {e}"))?;
+            ensure!(
+                res.status == want,
+                "a streamed body of {total} bytes (limit {max_body}): expected {want}, got {} `{}`",
+                res.status,
+                text(&res)
+            );
         }
         let _ = server.shutdown().await;
         Ok(())

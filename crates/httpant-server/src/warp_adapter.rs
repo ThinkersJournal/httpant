@@ -40,6 +40,7 @@ impl ServerAdapter for WarpAdapter {
 
     fn serve(&self, svc: BoxService, opts: ServeOptions) -> BoxFuture<'_, Result<RunningServer>> {
         Box::pin(async move {
+            let svc = opts.limits.wrap(svc);
             opts.listener.set_nonblocking(true)?;
             let addr = opts.listener.local_addr()?;
             let listener = TcpListener::from_std(opts.listener)?;

@@ -8,6 +8,7 @@ mod adapter;
 #[cfg(feature = "axum")]
 mod axum_adapter;
 mod hyper_adapter;
+mod limits;
 #[cfg(feature = "poem")]
 mod poem_adapter;
 #[cfg(feature = "salvo")]
@@ -26,6 +27,7 @@ pub use httpant_core as core;
 use httpant_core::http::Method;
 use httpant_core::{BoxService, Error, Handler, LayerFn, Result, Router, apply_layers, layer_fn};
 pub use hyper_adapter::HyperAdapter;
+pub use limits::Limits;
 #[cfg(feature = "poem")]
 pub use poem_adapter::PoemAdapter;
 #[cfg(feature = "salvo")]
@@ -54,6 +56,7 @@ pub struct Server {
     adapter: Arc<dyn ServerAdapter>,
     router: Router,
     layers: Vec<LayerFn>,
+    limits: Limits,
 }
 
 impl Default for Server {
@@ -69,6 +72,7 @@ impl Server {
             adapter: Arc::new(HyperAdapter),
             router: Router::new(),
             layers: Vec::new(),
+            limits: Limits::default(),
         }
     }
 
@@ -109,7 +113,14 @@ impl Server {
             adapter: Arc::new(adapter),
             router: Router::new(),
             layers: Vec::new(),
+            limits: Limits::default(),
         }
+    }
+
+    /// Serve with these limits (request target, header count and size, body size) instead of the conservative defaults, see [`Limits`].
+    pub fn limits(mut self, limits: Limits) -> Self {
+        self.limits = limits;
+        self
     }
 
     /// Add a route for any method.
@@ -159,8 +170,12 @@ impl Server {
     /// Serve on a socket that is already bound.
     pub async fn serve(self, listener: std::net::TcpListener) -> Result<RunningServer> {
         let adapter = Arc::clone(&self.adapter);
+        let limits = self.limits;
         adapter
-            .serve(self.into_service(), ServeOptions::new(listener))
+            .serve(
+                self.into_service(),
+                ServeOptions::new(listener).limits(limits),
+            )
             .await
     }
 }

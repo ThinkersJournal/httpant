@@ -90,7 +90,10 @@ impl Subject for MutantSubject {
                 return mutants::serve_aborting(svc, free_listener()?);
             }
             HyperAdapter
-                .serve(svc, ServeOptions::new(free_listener()?))
+                .serve(
+                    svc,
+                    ServeOptions::new(free_listener()?).limits(self.0.limits()),
+                )
                 .await
         })
     }

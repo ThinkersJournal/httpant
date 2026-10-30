@@ -44,11 +44,32 @@ pub enum Mutant {
     SerialiseRequests,
     /// A HEAD response loses the headers the GET response has.
     HeadStripsHeaders,
+    /// The default limits, except that request targets are not limited.
+    NoUriLimit,
+    /// The default limits, except that header fields are not counted.
+    NoHeaderCountLimit,
+    /// The default limits, except that header bytes are not limited.
+    NoHeaderBytesLimit,
+    /// The default limits, except that request bodies are not limited.
+    NoBodyLimit,
     /// The path is percent-decoded before routing, so an encoded `/` or `..` becomes a real separator or dot segment.
     DecodeBeforeRouting,
 }
 
 impl Mutant {
+    /// The limits the subject serves a mutant with: the defaults, minus the one the mutant is about.
+    pub fn limits(self) -> httpant_server::Limits {
+        let mut l = httpant_server::Limits::default();
+        match self {
+            Mutant::NoUriLimit => l.max_uri_len = None,
+            Mutant::NoHeaderCountLimit => l.max_headers = None,
+            Mutant::NoHeaderBytesLimit => l.max_header_bytes = None,
+            Mutant::NoBodyLimit => l.max_body_bytes = None,
+            _ => {}
+        }
+        l
+    }
+
     /// Stable short id.
     pub fn id(self) -> &'static str {
         match self {
@@ -68,6 +89,10 @@ impl Mutant {
             Mutant::SerialiseRequests => "serialise-requests",
             Mutant::HeadStripsHeaders => "head-strips-headers",
             Mutant::DecodeBeforeRouting => "decode-before-routing",
+            Mutant::NoUriLimit => "no-uri-limit",
+            Mutant::NoHeaderCountLimit => "no-header-count-limit",
+            Mutant::NoHeaderBytesLimit => "no-header-bytes-limit",
+            Mutant::NoBodyLimit => "no-body-limit",
         }
     }
 }
@@ -78,7 +103,12 @@ type Step = fn(BoxService, Request) -> BoxFuture<'static, Response>;
 pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
     let step: Step = match mutant {
         // The defect is in how the subject builds or runs the service, not in the service.
-        Mutant::NoMiddleware | Mutant::AbortOnShutdown => return svc,
+        Mutant::NoMiddleware
+        | Mutant::AbortOnShutdown
+        | Mutant::NoUriLimit
+        | Mutant::NoHeaderCountLimit
+        | Mutant::NoHeaderBytesLimit
+        | Mutant::NoBodyLimit => return svc,
         Mutant::FoldMethodToGet => fold_method_to_get,
         Mutant::ClampStatus => clamp_status,
         Mutant::HashMapHeaders => hashmap_headers,

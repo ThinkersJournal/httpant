@@ -74,6 +74,12 @@ async fn param(req: Request) -> String {
     )
 }
 
+/// `/sink`: reads the whole request body (the handler asks for far more than any server limit, so only the server's limit can stop it).
+async fn sink(req: Request) -> Result<String, Error> {
+    let bytes = req.into_body().bytes(1 << 40).await?;
+    Ok(format!("got {}", bytes.len()))
+}
+
 async fn who(req: Request) -> String {
     format!(
         "{} {} {}",
@@ -163,6 +169,7 @@ pub fn app_with_gates() -> (App, Gates) {
         .get("/bin", || async { binary_body() })
         .get("/param/:x", param)
         .get("/file/*rest", param)
+        .post("/sink", sink)
         .get("/who/:x", who)
         .post("/who/:x", who)
         .get("/a", || async { "a" })

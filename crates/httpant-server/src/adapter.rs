@@ -5,6 +5,8 @@ use httpant_core::{BoxFuture, BoxService, Capabilities, Error, Result};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
+use crate::Limits;
+
 /// What an adapter is given to serve on.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -12,12 +14,23 @@ pub struct ServeOptions {
     /// An already-bound listening socket, so a supervisor (systemd, WebHostAnt) can hand one over. Binding to port 0 and reading the real
     /// address back from [`RunningServer::addr`] is part of the contract.
     pub listener: std::net::TcpListener,
+    /// What the server accepts before a handler runs. Every adapter must apply it: `let svc = opts.limits.wrap(svc);` (conformance case 14).
+    pub limits: Limits,
 }
 
 impl ServeOptions {
     /// Serve on this socket.
     pub fn new(listener: std::net::TcpListener) -> Self {
-        Self { listener }
+        Self {
+            listener,
+            limits: Limits::default(),
+        }
+    }
+
+    /// Serve with these limits instead of the defaults.
+    pub fn limits(mut self, limits: Limits) -> Self {
+        self.limits = limits;
+        self
     }
 }
 

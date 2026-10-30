@@ -12,6 +12,33 @@ use crate::{Error, Result};
 /// The error type a boxed body reports.
 pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
+/// The error a body reports when it was read past a limit someone set on it (the server's request-body limit, for one). [`Body::bytes`] turns it
+/// into [`Error::BodyTooLarge`], which answers `413`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BodyLimitExceeded {
+    limit: u64,
+}
+
+impl BodyLimitExceeded {
+    /// A body that went past `limit` bytes.
+    pub fn new(limit: u64) -> Self {
+        Self { limit }
+    }
+
+    /// The limit that was exceeded, in bytes.
+    pub fn limit(&self) -> u64 {
+        self.limit
+    }
+}
+
+impl std::fmt::Display for BodyLimitExceeded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "body is larger than the limit of {} bytes", self.limit)
+    }
+}
+
+impl std::error::Error for BodyLimitExceeded {}
+
 /// A streaming HTTP body. Streaming is the representation; buffering is a convenience that always takes an explicit limit.
 ///
 /// There is deliberately no method that reads without a limit (the old axum adapter read with `usize::MAX`).
@@ -44,7 +71,12 @@ impl Body {
         }
         let mut out = BytesMut::new();
         while let Some(frame) = self.frame().await {
-            let frame = frame.map_err(Error::Body)?;
+            let frame = frame.map_err(|e| match e.downcast_ref::<BodyLimitExceeded>() {
+                Some(over) => Error::BodyTooLarge {
+                    limit: usize::try_from(over.limit()).unwrap_or(usize::MAX),
+                },
+                None => Error::Body(e),
+            })?;
             if let Ok(mut data) = frame.into_data() {
                 if data.remaining() > limit - out.len() {
                     return Err(Error::BodyTooLarge { limit });
@@ -114,6 +146,23 @@ mod tests {
     #[tokio::test]
     async fn reads_a_body_under_the_limit() {
         assert_eq!(Body::from_bytes("hello").bytes(5).await.unwrap(), "hello");
+    }
+
+    #[tokio::test]
+    async fn a_body_limit_error_from_below_is_body_too_large() {
+        struct Over;
+        impl http_body::Body for Over {
+            type Data = Bytes;
+            type Error = BoxError;
+            fn poll_frame(
+                self: Pin<&mut Self>,
+                _: &mut Context<'_>,
+            ) -> Poll<Option<std::result::Result<Frame<Bytes>, BoxError>>> {
+                Poll::Ready(Some(Err(Box::new(BodyLimitExceeded::new(7)))))
+            }
+        }
+        let err = Body::new(Over).bytes(1 << 20).await.unwrap_err();
+        assert!(matches!(err, Error::BodyTooLarge { limit: 7 }), "{err:?}");
     }
 
     #[tokio::test]
