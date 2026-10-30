@@ -27,7 +27,7 @@ pub use client_suite::{
 };
 pub use live::{Measured, measure};
 pub use mutants::Mutant;
-pub use subject::{AdapterSubject, App, MutantSubject, Subject, adapters, reference};
+pub use subject::{AdapterSubject, App, MutantSubject, Setup, Subject, adapters, reference};
 
 /// One conformance case and the broken variants it must be shown able to fail on.
 #[derive(Clone, Copy)]

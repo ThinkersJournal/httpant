@@ -271,6 +271,20 @@ mod tests {
     }
 
     #[test]
+    fn the_scheme_is_the_last_value_the_nearest_proxy_appended() {
+        // The client sent `http`; the trusted proxy appended what it saw.
+        let h = headers(&[
+            ("x-forwarded-proto", "http"),
+            ("x-forwarded-proto", "https"),
+        ]);
+        let o = origin_of(peer("10.0.0.5"), &h, &proxies()).unwrap();
+        assert_eq!(o.scheme, Scheme::Https);
+        let h = headers(&[("x-forwarded-proto", "https, http")]);
+        let o = origin_of(peer("10.0.0.5"), &h, &proxies()).unwrap();
+        assert_eq!(o.scheme, Scheme::Http);
+    }
+
+    #[test]
     fn a_trusted_peer_that_forwards_nothing_is_its_own_client() {
         let o = origin_of(peer("10.0.0.5"), &HeaderMap::new(), &proxies()).unwrap();
         assert_eq!(o.client, ip("10.0.0.5"));
