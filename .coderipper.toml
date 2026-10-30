@@ -1,0 +1,4 @@
+[[allow]]
+check = "SEC-002"
+file = "src/types/tests.rs"
+reason = "History hit only: the file was deleted in 0.1.0 (e5f6663) and is in no tree at or after it. The four hits (lines 275, 282, 288, 294 of the 2087589..42c5204 blob) are the public WebSocket handshake sample of RFC 6455 section 1.3 (the sample Sec-WebSocket-Key and the Sec-WebSocket-Accept derived from it), used as a test vector; checked against the old blob by matching the RFC constants, values not printed here. Not a secret, not regenerated. Remove if the history is ever rewritten."
