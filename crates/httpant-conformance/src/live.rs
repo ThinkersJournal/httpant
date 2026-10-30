@@ -149,6 +149,7 @@ pub fn graceful_shutdown(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
             .map_err(|e| format!("keep-alive connection, first request: {e}"))?;
         ensure!(first.status == 200, "GET /m: status {}", first.status);
 
+        let t_stop = tokio::time::Instant::now();
         let stopping = tokio::spawn(server.shutdown());
 
         // New connections are refused (the listener is closed), within a few seconds of the request.
@@ -169,7 +170,8 @@ pub fn graceful_shutdown(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
         );
         ensure!(
             !stopping.is_finished(),
-            "shutdown returned while a request was still in flight"
+            "shutdown returned while a request was still in flight ({:?} after it was requested)",
+            t_stop.elapsed()
         );
 
         gates.slow_release.notify_one();
