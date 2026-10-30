@@ -7,6 +7,7 @@ mod actix_adapter;
 mod adapter;
 #[cfg(feature = "axum")]
 mod axum_adapter;
+mod grace;
 mod hyper_adapter;
 mod limits;
 #[cfg(feature = "poem")]
@@ -17,12 +18,14 @@ mod salvo_adapter;
 mod warp_adapter;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 #[cfg(feature = "actix-web")]
 pub use actix_adapter::ActixAdapter;
-pub use adapter::{RunningServer, ServeOptions, ServerAdapter};
+pub use adapter::{FORCE_WAIT, RunningServer, ServeOptions, ServerAdapter};
 #[cfg(feature = "axum")]
 pub use axum_adapter::AxumAdapter;
+pub use grace::{DEFAULT_SHUTDOWN_GRACE, Grace};
 pub use httpant_core as core;
 use httpant_core::http::Method;
 use httpant_core::{BoxService, Error, Handler, LayerFn, Result, Router, apply_layers, layer_fn};
@@ -57,6 +60,7 @@ pub struct Server {
     router: Router,
     layers: Vec<LayerFn>,
     limits: Limits,
+    grace: Option<Option<Duration>>,
 }
 
 impl Default for Server {
@@ -73,6 +77,7 @@ impl Server {
             router: Router::new(),
             layers: Vec::new(),
             limits: Limits::default(),
+            grace: None,
         }
     }
 
@@ -114,12 +119,25 @@ impl Server {
             router: Router::new(),
             layers: Vec::new(),
             limits: Limits::default(),
+            grace: None,
         }
     }
 
     /// Serve with these limits (request target, header count and size, body size) instead of the conservative defaults, see [`Limits`].
     pub fn limits(mut self, limits: Limits) -> Self {
         self.limits = limits;
+        self
+    }
+
+    /// How long `shutdown()` waits for requests in flight before ending them (default 30 s), see [`ServeOptions::shutdown_grace`].
+    pub fn shutdown_grace(mut self, period: Duration) -> Self {
+        self.grace = Some(Some(period));
+        self
+    }
+
+    /// Wait for requests in flight for ever (see [`ServeOptions::no_shutdown_grace`]).
+    pub fn no_shutdown_grace(mut self) -> Self {
+        self.grace = Some(None);
         self
     }
 
@@ -170,13 +188,14 @@ impl Server {
     /// Serve on a socket that is already bound.
     pub async fn serve(self, listener: std::net::TcpListener) -> Result<RunningServer> {
         let adapter = Arc::clone(&self.adapter);
-        let limits = self.limits;
-        adapter
-            .serve(
-                self.into_service(),
-                ServeOptions::new(listener).limits(limits),
-            )
-            .await
+        let (limits, grace) = (self.limits, self.grace);
+        let opts = ServeOptions::new(listener).limits(limits);
+        let opts = match grace {
+            None => opts,
+            Some(Some(period)) => opts.shutdown_grace(period),
+            Some(None) => opts.no_shutdown_grace(),
+        };
+        adapter.serve(self.into_service(), opts).await
     }
 }
 

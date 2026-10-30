@@ -38,7 +38,8 @@ impl ServerAdapter for PoemAdapter {
 
     fn serve(&self, svc: BoxService, opts: ServeOptions) -> BoxFuture<'_, Result<RunningServer>> {
         Box::pin(async move {
-            let svc = opts.limits.wrap(svc);
+            let grace = opts.grace();
+            let svc = opts.wrap(svc);
             opts.listener.set_nonblocking(true)?;
             let addr = opts.listener.local_addr()?;
             let acceptor = TcpAcceptor::from_std(opts.listener)?;
@@ -63,7 +64,7 @@ impl ServerAdapter for PoemAdapter {
                     )
                     .await;
             });
-            Ok(RunningServer::new(addr, stop, task))
+            Ok(RunningServer::new(addr, stop, task, grace))
         })
     }
 }

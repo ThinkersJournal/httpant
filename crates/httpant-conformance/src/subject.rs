@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+use std::time::Duration;
+
 use httpant_core::{BoxFuture, Capabilities, LayerFn, Result, Router, apply_layers};
 use httpant_server::{
     ActixAdapter, AxumAdapter, HyperAdapter, PoemAdapter, RunningServer, SalvoAdapter,
@@ -20,12 +22,31 @@ pub trait Subject: Send + Sync {
     /// A name for failure messages.
     fn name(&self) -> String;
 
-    /// Start serving `app` on a free local port.
-    fn start(&self, app: App) -> BoxFuture<'_, Result<RunningServer>>;
+    /// Start serving `app` on a free local port, with this shutdown grace period (`None`: wait for ever).
+    fn start_with_grace(
+        &self,
+        app: App,
+        grace: Option<Duration>,
+    ) -> BoxFuture<'_, Result<RunningServer>>;
+
+    /// Start serving `app` on a free local port. The grace period is long (the cases that are not about it must never meet it).
+    fn start(&self, app: App) -> BoxFuture<'_, Result<RunningServer>> {
+        self.start_with_grace(app, Some(LONG_GRACE))
+    }
 
     /// What the subject says it can do, if it is a real adapter (a mutant says nothing).
     fn declared(&self) -> Option<Capabilities> {
         None
+    }
+}
+
+/// The grace period of every case that is not about the grace period.
+const LONG_GRACE: Duration = Duration::from_secs(60);
+
+fn options(listener: std::net::TcpListener, grace: Option<Duration>) -> ServeOptions {
+    match grace {
+        Some(period) => ServeOptions::new(listener).shutdown_grace(period),
+        None => ServeOptions::new(listener).no_shutdown_grace(),
     }
 }
 
@@ -45,10 +66,14 @@ impl<A: ServerAdapter> Subject for AdapterSubject<A> {
         Some(self.0.capabilities())
     }
 
-    fn start(&self, app: App) -> BoxFuture<'_, Result<RunningServer>> {
+    fn start_with_grace(
+        &self,
+        app: App,
+        grace: Option<Duration>,
+    ) -> BoxFuture<'_, Result<RunningServer>> {
         Box::pin(async move {
             let svc = apply_layers(app.router.into_service(), app.layers);
-            self.0.serve(svc, ServeOptions::new(free_listener()?)).await
+            self.0.serve(svc, options(free_listener()?, grace)).await
         })
     }
 }
@@ -78,7 +103,17 @@ impl Subject for MutantSubject {
         format!("mutant `{}`", self.0.id())
     }
 
-    fn start(&self, app: App) -> BoxFuture<'_, Result<RunningServer>> {
+    fn start_with_grace(
+        &self,
+        app: App,
+        grace: Option<Duration>,
+    ) -> BoxFuture<'_, Result<RunningServer>> {
+        // The mutant that waits for ever ignores the period it was asked for.
+        let grace = if self.0 == Mutant::NoShutdownGrace {
+            None
+        } else {
+            grace
+        };
         Box::pin(async move {
             let svc = if self.0 == Mutant::NoMiddleware {
                 app.router.into_service()
@@ -92,7 +127,7 @@ impl Subject for MutantSubject {
             HyperAdapter
                 .serve(
                     svc,
-                    ServeOptions::new(free_listener()?).limits(self.0.limits()),
+                    options(free_listener()?, grace).limits(self.0.limits()),
                 )
                 .await
         })

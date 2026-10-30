@@ -46,7 +46,8 @@ impl ServerAdapter for ActixAdapter {
 
     fn serve(&self, svc: BoxService, opts: ServeOptions) -> BoxFuture<'_, Result<RunningServer>> {
         Box::pin(async move {
-            let svc = opts.limits.wrap(svc);
+            let grace = opts.grace();
+            let svc = opts.wrap(svc);
             let addr = opts.listener.local_addr()?;
             let listener = opts.listener;
             let (handle_tx, handle_rx) = oneshot::channel::<std::io::Result<ServerHandle>>();
@@ -90,7 +91,7 @@ impl ServerAdapter for ActixAdapter {
                 handle.stop(true).await;
                 let _ = done_rx.await;
             });
-            Ok(RunningServer::new(addr, stop, task))
+            Ok(RunningServer::new(addr, stop, task, grace))
         })
     }
 }
