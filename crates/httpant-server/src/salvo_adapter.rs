@@ -4,6 +4,7 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use http_body::{Body as _, Frame, SizeHint};
 use http_body_util::BodyExt;
@@ -56,21 +57,20 @@ impl ServerAdapter for SalvoAdapter {
             let server = Server::new(acceptor);
             let handle = server.handle();
             let (stop, stopped) = oneshot::channel::<()>();
+            // salvo runs as a task of its own: it has to keep being polled while shutdown waits for the listener to close.
+            let mut serving = tokio::spawn(server.serve(Service::new(router)));
             let task = tokio::spawn(async move {
-                let serving = server.serve(Service::new(router));
-                tokio::pin!(serving);
                 tokio::select! {
                     _ = &mut serving => {}
                     _ = stopped => {
                         // Graceful: stop accepting, finish requests in flight, close idle connections, then return.
-                        // salvo keeps the listening socket open until it returns, so a client could still connect while it drains: close it first.
-                        // salvo drops its pending accept when the stop command arrives and never polls the acceptor again, so the close
-                        // has to be seen to happen first; the time limit only keeps a wedged accept loop from hanging shutdown.
+                        // salvo keeps the listening socket open until it has drained, so a client could still connect meanwhile; it also
+                        // drops its pending accept when the stop command arrives and never polls the acceptor again. So close the
+                        // listener first and wait to see it closed; the time limit only keeps a wedged accept loop from hanging shutdown.
                         close.notify_one();
-                        let ack = tokio::time::timeout(std::time::Duration::from_secs(2), closed.notified()).await;
-                        eprintln!("DBG salvo: listener close acknowledged: {}", ack.is_ok());
+                        let _ = tokio::time::timeout(Duration::from_secs(2), closed.notified()).await;
                         handle.stop_graceful(None);
-                        serving.await;
+                        let _ = serving.await;
                         // salvo's own wait counts connections; the contract counts requests, so wait for those too.
                         in_flight.drained().await;
                     }
