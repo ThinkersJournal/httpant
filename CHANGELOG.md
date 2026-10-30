@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-10-30
+
+- `docs/PATENT-SWEEP.md` is a real sweep of the 0.5.x line (10 ideas, 10 queries, 7 patents read claim by claim, none needs review) instead of the "not yet performed" placeholder. Documentation only. Not published.
+
 ## [0.5.1] - 2026-10-30
 
 - TLS termination, first half of ROADMAP row 4 slice (b), behind the new `tls` feature of `httpant-server` (rustls with the `ring` provider only; no aws-lc, no native-tls). `CertSource` is the hole WebHostAnt/WebServAnt plug into: an async `cert_for(server_name) -> Result<Option<Arc<ServerCert>>>` called **once per handshake** with the SNI name (`None` when the client sent none; the source decides, `FixedCert` answers with its one certificate). `Ok(None)` (unknown name) and `Err` both refuse that handshake; neither falls back to another name's certificate. `TlsAcceptor::new(source).handshake_timeout(..)` (10 s default, source lookup included); `ServeOptions::tls` / `Server::tls`. TLS 1.3 and 1.2 only, ALPN `http/1.1` only (the adapters speak HTTP/1.1; `h2` waits for them). `ServerCert::from_pem` / `from_der` check that the key suits the certificate; its `Debug` shows `<redacted>` and no error carries key bytes.

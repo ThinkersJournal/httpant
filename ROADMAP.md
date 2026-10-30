@@ -15,5 +15,5 @@ Status: `next` (do now, in this order), `later`, `blocked` (needs a decision or 
 | 8 | Mutant for `Connection: close` / `Expect: 100-continue` (case 10 has only a keep-alive mutant) | later | Both are decided below the service, so the mutant has to live in a subject. |
 | 9 | `LocalHandler` capability (non-`Send` handlers, actix) | later | Compile-time or startup error elsewhere, never a silent downgrade. |
 | 10 | Read ConfigurAnt's API before wiring settings | later | Design section 10; UNVERIFIED. |
-| 11 | Replace `PATENT-SWEEP.md` with a real sweep | blocked | Nothing is published until it is done (`docs/PATENT-SWEEP.md`). |
+| 11 | Replace `PATENT-SWEEP.md` with a real sweep | done (PM to accept) | First sweep of the 0.5.x line at 2d8a670, 7 patents read, none needs review; coverage thin (one pass of web search, no boolean database search): see its Limitations. Re-sweep for h2, ACME handler, client TLS. |
 | 12 | Flaky test: `the_whole_suite_passes_on_every_adapter` failed once in a full `cargo test --workspace` on Windows (2026-10-30, at 0.4.0 PR head be84ee9), not reproduced in 5 later runs; failure message not captured | later | Evidence needed: run the workspace tests in a loop under load, keep the output, name the case. |
