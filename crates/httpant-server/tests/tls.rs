@@ -112,8 +112,8 @@ async fn every_tls_adapter_serves_https_and_says_so() {
             )
             .await
             .unwrap_or_else(|e| panic!("{id} tls12={tls12}: {e}"));
-            assert!(reply.starts_with("HTTP/1.1 200"), "{id}: {reply}");
-            assert!(reply.ends_with("Https"), "{id}: {reply}");
+            assert!(reply.starts_with("HTTP/1.1 200"), "{id}: not a 200");
+            assert!(reply.ends_with("Https"), "{id}: scheme not https");
             assert_eq!(leaf, made.der, "{id}: served another certificate");
         }
         server.shutdown().await.unwrap();
@@ -267,7 +267,7 @@ fn the_private_key_is_not_in_debug_output_or_errors() {
         .filter(|l| !l.starts_with("-----"))
         .collect();
     let shown = format!("{:?} {:?}", made.cert, FixedCert::new(made.cert.clone()));
-    assert!(!shown.contains(&body[..32]), "{shown}");
+    assert!(!shown.contains(&body[..32]), "key bytes in Debug output");
     assert!(shown.contains("redacted"));
     // A mismatched pair is refused, and the error does not carry the key.
     let other = make_cert("other.test");
