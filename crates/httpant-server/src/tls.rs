@@ -8,6 +8,7 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::tls_audit::{self, RefusalReason, Served, TlsAudit, TlsEvent};
 use httpant_core::{BoxFuture, Error, Result};
 use rustls::crypto::ring as provider;
 use rustls::pki_types::pem::PemObject;
@@ -139,6 +140,8 @@ impl ResolvesServerCert for One {
 pub struct TlsAcceptor {
     source: Arc<dyn CertSource>,
     handshake_timeout: Duration,
+    audit: Option<Arc<dyn TlsAudit>>,
+    served: Arc<Served>,
 }
 
 impl fmt::Debug for TlsAcceptor {
@@ -155,6 +158,20 @@ impl TlsAcceptor {
         Self {
             source: Arc::new(source),
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
+            audit: None,
+            served: Arc::default(),
+        }
+    }
+
+    /// Report [`TlsEvent`]s (refused handshakes, a changed certificate) to `sink`, for the audit trail.
+    pub fn audit(mut self, sink: impl TlsAudit) -> Self {
+        self.audit = Some(Arc::new(sink));
+        self
+    }
+
+    fn emit(&self, event: TlsEvent) {
+        if let Some(sink) = &self.audit {
+            sink.event(&event);
         }
     }
 
@@ -164,24 +181,64 @@ impl TlsAcceptor {
         self
     }
 
-    /// Run the handshake on `tcp`. Errors (timeout, unknown name, source failure, protocol error) end only this connection.
+    /// Run the handshake on `tcp`. Errors (timeout, unknown name, source failure, protocol error) end only this connection, and are reported to
+    /// the audit sink if there is one.
     pub async fn accept(&self, tcp: TcpStream) -> io::Result<TlsStream<TcpStream>> {
+        // The name the client sent, once its hello has been read: kept outside the handshake so a timeout can still say which name it was.
+        let hello_name = std::sync::Mutex::new(None::<Option<String>>);
         let handshake = async {
-            let start = LazyConfigAcceptor::new(rustls::server::Acceptor::default(), tcp).await?;
-            let name = start.client_hello().server_name().map(str::to_owned);
-            let cert = self
-                .source
-                .cert_for(name.as_deref())
+            let start = LazyConfigAcceptor::new(rustls::server::Acceptor::default(), tcp)
                 .await
-                .map_err(io::Error::other)?
-                .ok_or_else(|| {
-                    io::Error::other(format!("no certificate for server name {name:?}"))
-                })?;
-            start.into_stream(Arc::new(config_for(&cert)?)).await
+                .map_err(|e| (RefusalReason::Protocol, e))?;
+            let name = start.client_hello().server_name().map(str::to_owned);
+            *hello_name.lock().unwrap_or_else(|e| e.into_inner()) = Some(name.clone());
+            let cert = match self.source.cert_for(name.as_deref()).await {
+                Ok(Some(cert)) => cert,
+                Ok(None) => {
+                    let why = io::Error::other(format!("no certificate for server name {name:?}"));
+                    return Err((RefusalReason::UnknownName, why));
+                }
+                Err(e) => return Err((RefusalReason::SourceFailed, io::Error::other(e))),
+            };
+            let config = config_for(&cert).map_err(|e| (RefusalReason::Protocol, e))?;
+            let stream = start
+                .into_stream(Arc::new(config))
+                .await
+                .map_err(|e| (RefusalReason::Protocol, e))?;
+            // Only a handshake that completed counts as the certificate being served.
+            if self.audit.is_some() && self.served.changed(&name, cert.leaf_der()) {
+                self.emit(TlsEvent::CertificateChanged {
+                    server_name: name.as_deref().map(tls_audit::clean_name),
+                    serial: tls_audit::serial_hex(cert.leaf_der()),
+                });
+            }
+            Ok(stream)
         };
-        tokio::time::timeout(self.handshake_timeout, handshake)
-            .await
-            .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "TLS handshake timed out"))?
+        let refused = |reason: RefusalReason| {
+            let name = hello_name
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+                .flatten();
+            self.emit(TlsEvent::HandshakeRefused {
+                server_name: name.as_deref().map(tls_audit::clean_name),
+                reason,
+            });
+        };
+        match tokio::time::timeout(self.handshake_timeout, handshake).await {
+            Ok(Ok(stream)) => Ok(stream),
+            Ok(Err((reason, why))) => {
+                refused(reason);
+                Err(why)
+            }
+            Err(_) => {
+                refused(RefusalReason::Timeout);
+                Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "TLS handshake timed out",
+                ))
+            }
+        }
     }
 }
 
