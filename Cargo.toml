@@ -4,7 +4,7 @@ members = ["crates/httpant-core", "crates/httpant-server", "crates/httpant-clien
 
 [workspace.package]
 # One number for every crate in the project (portfolio rule). 0.1.0: a new line, not a continuation of web-server-abstraction 1.0.x.
-version = "0.1.9"
+version = "0.2.0"
 edition = "2024"
 authors = ["Eric Evans <ciresnave@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -22,9 +22,9 @@ salvo_core = { version = "1", default-features = false }
 warp = { version = "0.4", default-features = false }
 hyper = { version = "1", default-features = false }
 hyper-util = { version = "0.1", default-features = false }
-httpant-core = { path = "crates/httpant-core", version = "0.1.0" }
-httpant-server = { path = "crates/httpant-server", version = "0.1.0" }
-httpant-client = { path = "crates/httpant-client", version = "0.1.0" }
+httpant-core = { path = "crates/httpant-core", version = "0.2.0" }
+httpant-server = { path = "crates/httpant-server", version = "0.2.0" }
+httpant-client = { path = "crates/httpant-client", version = "0.2.0" }
 thiserror = "2"
 tokio = "1"
 tower = { version = "0.5", default-features = false, features = ["util"] }

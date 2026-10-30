@@ -225,3 +225,43 @@ pub fn path_rule(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
         Ok(())
     })
 }
+
+/// Case 13: a percent-encoded path reaches the handler decoded, and the encodings that could smuggle a different path are refused.
+pub fn path_encoding(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
+    Box::pin(async move {
+        let server = serve!(s);
+        for (target, status, body) in [
+            ("/param/a%20b", 200u16, Some("a b|a%20b")),
+            ("/param/caf%C3%A9", 200, Some("caf\u{e9}|caf%C3%A9")),
+            ("/param/a+b", 200, Some("a+b|a+b")),
+            ("/file/x/a%20b/c", 200, Some("x/a b/c|x/a%20b/c")),
+            // Refused before any handler runs: bad escape, not UTF-8, encoded separators and NUL, encoded dot segments.
+            ("/param/%zz", 400, None),
+            ("/param/%ff", 400, None),
+            ("/param/a%2Fb", 400, None),
+            ("/param/a%5Cb", 400, None),
+            ("/param/%00", 400, None),
+            ("/param/%2e%2e", 400, None),
+            ("/file/a/%2e%2e/b", 400, None),
+            // Literals are matched raw: the encoded spelling of a route is not that route.
+            ("/%61", 404, None),
+        ] {
+            let res = ask(server.addr(), RawRequest::new("GET", target)).await?;
+            ensure!(
+                res.status == status,
+                "GET {target}: expected {status}, got {} `{}`",
+                res.status,
+                text(&res)
+            );
+            if let Some(body) = body {
+                ensure!(
+                    text(&res) == body,
+                    "GET {target}: the handler saw `{}`, expected `{body}`",
+                    text(&res)
+                );
+            }
+        }
+        let _ = server.shutdown().await;
+        Ok(())
+    })
+}

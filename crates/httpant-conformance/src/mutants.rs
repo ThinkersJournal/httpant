@@ -44,6 +44,8 @@ pub enum Mutant {
     SerialiseRequests,
     /// A HEAD response loses the headers the GET response has.
     HeadStripsHeaders,
+    /// The path is percent-decoded before routing, so an encoded `/` or `..` becomes a real separator or dot segment.
+    DecodeBeforeRouting,
 }
 
 impl Mutant {
@@ -65,6 +67,7 @@ impl Mutant {
             Mutant::ForceConnectionClose => "force-connection-close",
             Mutant::SerialiseRequests => "serialise-requests",
             Mutant::HeadStripsHeaders => "head-strips-headers",
+            Mutant::DecodeBeforeRouting => "decode-before-routing",
         }
     }
 }
@@ -89,6 +92,7 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         Mutant::ForceConnectionClose => force_connection_close,
         Mutant::SerialiseRequests => serialise_requests,
         Mutant::HeadStripsHeaders => head_strips_headers,
+        Mutant::DecodeBeforeRouting => decode_before_routing,
     };
     BoxService::new(tower::service_fn(move |req: Request| {
         let svc = svc.clone();
@@ -288,4 +292,23 @@ pub fn serve_aborting(svc: BoxService, listener: std::net::TcpListener) -> Resul
         drop(conns);
     });
     Ok(RunningServer::new(addr, stop, task))
+}
+
+fn decode_before_routing(svc: BoxService, mut req: Request) -> BoxFuture<'static, Response> {
+    Box::pin(async move {
+        let path = req.uri().path();
+        let decoded = path
+            .replace("%2F", "/")
+            .replace("%2f", "/")
+            .replace("%2e", ".")
+            .replace("%2E", ".");
+        let rebuilt = match req.uri().query() {
+            Some(q) => format!("{decoded}?{q}"),
+            None => decoded,
+        };
+        if let Ok(uri) = rebuilt.parse::<Uri>() {
+            *req.uri_mut() = uri;
+        }
+        call(svc, req).await
+    })
 }

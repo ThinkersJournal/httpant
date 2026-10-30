@@ -59,6 +59,21 @@ async fn echo_body(req: Request) -> Result<Bytes, Error> {
     req.into_body().bytes(BODY_LIMIT).await
 }
 
+/// `/param/:x` and `/file/*rest`: the percent-decoded capture, then the raw one.
+async fn param(req: Request) -> String {
+    let p = req
+        .extensions()
+        .get::<PathParams>()
+        .cloned()
+        .unwrap_or_default();
+    let (name, _) = p.iter().next().unwrap_or(("", ""));
+    format!(
+        "{}|{}",
+        p.get(name).unwrap_or_default(),
+        p.get_raw(name).unwrap_or_default()
+    )
+}
+
 async fn who(req: Request) -> String {
     format!(
         "{} {} {}",
@@ -146,6 +161,8 @@ pub fn app_with_gates() -> (App, Gates) {
         .get("/hdr", raw_header)
         .post("/echo", echo_body)
         .get("/bin", || async { binary_body() })
+        .get("/param/:x", param)
+        .get("/file/*rest", param)
         .get("/who/:x", who)
         .post("/who/:x", who)
         .get("/a", || async { "a" })
