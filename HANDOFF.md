@@ -12,7 +12,7 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 
 ## State
 - Work list: `ROADMAP.md` (the repo's own, PM's order). Merged: slices 1a-7, percent-decoding (#17, 0.2.0), limits (#18, 0.3.0), shutdown grace (#19, 0.4.0).
-- **Open PR:** 80->443 redirect (branch `feat/https-redirect`, worktree `C:\Projects\httpant-wt-redirect`, 0.5.6 placeholder). Merged: TLS first half (#21), sweep (#22, #23), read-back (#24, 0.5.4), ACME prefix (#25, 0.5.5).
+- **Open PR:** TLS audit events (branch `feat/tls-events`, worktree `C:\Projects\httpant-wt-events`, 0.5.7 placeholder). Merged: TLS first half (#21), sweep (#22, #23), read-back (#24, 0.5.4), ACME prefix (#25, 0.5.5), 80->443 redirect (#26, 0.5.6).
 - **Lesson (salvo):** Windows green is not Linux green. Wait for the ubuntu job before calling an adapter or a limit done.
 - **Option A (Tower core, thin adapters) is PROVISIONAL**: PM told me to proceed 2026-10-29 while CireSnave decides A/B/C.
 - Rules decided: no trailing-slash normalisation (design section 3); path captures decoded, literals raw (CHANGELOG 0.2.0); limits enforced by HTTPAnt on the request (0.3.0); shutdown grace enforced by a Tower wrapper (0.4.0); forwarded headers believed only from configured trusted proxies (0.5.0).
@@ -20,7 +20,7 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 - Publish is the PM's call: the sweep (`docs/PATENT-SWEEP.md`) is accepted as honest and thin; the PM reads what is already on crates.io first.
 
 ## Next (in order)
-1. After the redirect PR merges: remove its worktree + branch. Then ROADMAP row 4 rest: events (23), a TLS conformance case, `acme-tls/1` (13). Probe actix/poem/salvo/warp for real TLS ability (their `No` is recalled, not run). Then row 5 (benchmarks); the flaky-suite row needs evidence.
+1. After the events PR merges: remove its worktree + branch. Then ROADMAP row 4 rest: a TLS conformance case (PM named it next; Subject/Setup in `crates/httpant-conformance/src/subject.rs` need a TLS option), `acme-tls/1` (13), `h2`. Run `RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps` before every push (CI does; it caught a broken link on #26). Probe actix/poem/salvo/warp for real TLS ability (their `No` is recalled, not run). Then row 5 (benchmarks); the flaky-suite row needs evidence.
 
 ## Standing constraints
 - `CARGO_BUILD_JOBS=2`, one build at a time. Primary checkout stays on `main`; every branch in `C:\Projects\httpant-wt-<topic>`.
