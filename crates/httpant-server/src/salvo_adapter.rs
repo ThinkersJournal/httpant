@@ -38,6 +38,8 @@ impl ServerAdapter for SalvoAdapter {
         c.graceful_shutdown = Support::Yes;
         // Not measurable by this suite: a handler that is not `Send` cannot be written against the `Send` service contract.
         c.local_handlers = Support::No;
+        // HTTPAnt terminates TLS below the adapters only where the web library accepts an already-handshaken stream; this one is edge mode only.
+        c.tls = Support::No;
         c
     }
 

@@ -15,6 +15,10 @@ mod limits;
 mod poem_adapter;
 #[cfg(feature = "salvo")]
 mod salvo_adapter;
+#[cfg(feature = "tls")]
+mod tls;
+#[cfg(all(feature = "tls", feature = "axum"))]
+mod tls_listener;
 #[cfg(feature = "warp")]
 mod warp_adapter;
 
@@ -37,6 +41,11 @@ pub use limits::Limits;
 pub use poem_adapter::PoemAdapter;
 #[cfg(feature = "salvo")]
 pub use salvo_adapter::SalvoAdapter;
+#[cfg(feature = "tls")]
+pub use tls::{
+    CertSource, CertSourceError, DEFAULT_HANDSHAKE_TIMEOUT, FixedCert, ServerCert, TlsAcceptor,
+    TlsConnection,
+};
 use tokio::net::ToSocketAddrs;
 #[cfg(feature = "warp")]
 pub use warp_adapter::WarpAdapter;
@@ -64,6 +73,8 @@ pub struct Server {
     limits: Limits,
     grace: Option<Option<Duration>>,
     trusted_proxies: TrustedProxies,
+    #[cfg(feature = "tls")]
+    tls: Option<TlsAcceptor>,
 }
 
 impl Default for Server {
@@ -82,6 +93,8 @@ impl Server {
             limits: Limits::default(),
             grace: None,
             trusted_proxies: TrustedProxies::none(),
+            #[cfg(feature = "tls")]
+            tls: None,
         }
     }
 
@@ -125,6 +138,8 @@ impl Server {
             limits: Limits::default(),
             grace: None,
             trusted_proxies: TrustedProxies::none(),
+            #[cfg(feature = "tls")]
+            tls: None,
         }
     }
 
@@ -137,6 +152,14 @@ impl Server {
     /// Peers trusted to forward the client's address and scheme, see [`ServeOptions::trusted_proxies`] and [`Origin`].
     pub fn trusted_proxies(mut self, proxies: TrustedProxies) -> Self {
         self.trusted_proxies = proxies;
+        self
+    }
+
+    /// Terminate TLS on the listener with certificates from a [`CertSource`], see [`TlsAcceptor`]. An adapter that cannot terminate TLS makes
+    /// `serve`/`bind` fail with [`Error::TlsNotSupported`]; it never serves in clear.
+    #[cfg(feature = "tls")]
+    pub fn tls(mut self, acceptor: TlsAcceptor) -> Self {
+        self.tls = Some(acceptor);
         self
     }
 
@@ -203,6 +226,18 @@ impl Server {
         let opts = ServeOptions::new(listener)
             .limits(limits)
             .trusted_proxies(proxies);
+        #[cfg(feature = "tls")]
+        let opts = match self.tls.clone() {
+            None => opts,
+            Some(acceptor) => {
+                if adapter.capabilities().tls != httpant_core::Support::Yes {
+                    return Err(Error::TlsNotSupported {
+                        adapter: adapter.id(),
+                    });
+                }
+                opts.tls(acceptor)
+            }
+        };
         let opts = match grace {
             None => opts,
             Some(Some(period)) => opts.shutdown_grace(period),

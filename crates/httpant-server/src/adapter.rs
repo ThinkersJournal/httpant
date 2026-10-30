@@ -19,6 +19,9 @@ pub struct ServeOptions {
     pub limits: Limits,
     /// Peers trusted to say who the client is (default: none), see [`Origin`](crate::Origin).
     pub trusted_proxies: TrustedProxies,
+    /// Terminate TLS on `listener` with this acceptor (feature `tls`). Adapters whose [`Capabilities::tls`] is not `Yes` are refused before they start.
+    #[cfg(feature = "tls")]
+    pub tls: Option<crate::TlsAcceptor>,
     grace: Grace,
 }
 
@@ -29,6 +32,8 @@ impl ServeOptions {
             listener,
             limits: Limits::default(),
             trusted_proxies: TrustedProxies::none(),
+            #[cfg(feature = "tls")]
+            tls: None,
             grace: Grace::new(Some(DEFAULT_SHUTDOWN_GRACE)),
         }
     }
@@ -42,6 +47,13 @@ impl ServeOptions {
     /// Trust these peers to forward the client's address and scheme (`X-Forwarded-For`, `X-Forwarded-Proto`); nobody is trusted by default.
     pub fn trusted_proxies(mut self, proxies: TrustedProxies) -> Self {
         self.trusted_proxies = proxies;
+        self
+    }
+
+    /// Terminate TLS on the listener, see [`TlsAcceptor`](crate::TlsAcceptor).
+    #[cfg(feature = "tls")]
+    pub fn tls(mut self, acceptor: crate::TlsAcceptor) -> Self {
+        self.tls = Some(acceptor);
         self
     }
 
