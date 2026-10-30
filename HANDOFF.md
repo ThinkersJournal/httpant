@@ -12,7 +12,7 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 
 ## State
 - Work list: `ROADMAP.md` (the repo's own, PM's order). Merged: slices 1a-7, percent-decoding (#17, 0.2.0), limits (#18, 0.3.0), shutdown grace (#19, 0.4.0).
-- **Open PR:** TLS probes (branch `docs/tls-probes`, worktree `C:\Projects\httpant-wt-probe`, 0.5.9 placeholder): poem and salvo now terminate TLS. Merged: TLS first half (#21), sweep (#22, #23), read-back (#24), ACME prefix (#25), 80->443 redirect (#26), audit events (#27), TLS conformance case 17 (#28, 0.5.8).
+- **Open PR:** actix-web TLS spike result recorded (branch `docs/actix-tls-run`, worktree `C:\Projects\httpant-wt-actixdoc`, 0.5.10 placeholder, docs only). The spike code stays on branch `spike/actix-tls` (e799dc8, pushed, not for merge; worktree `httpant-wt-actix` can go once the PM has read it). Merged: TLS first half (#21), sweep (#22, #23), read-back (#24), ACME prefix (#25), 80->443 redirect (#26), audit events (#27), case 17 (#28), TLS probes: poem + salvo terminate TLS (#29, 0.5.9).
 - **Lesson (salvo):** Windows green is not Linux green. Wait for the ubuntu job before calling an adapter or a limit done.
 - **Option A (Tower core, thin adapters) is PROVISIONAL**: PM told me to proceed 2026-10-29 while CireSnave decides A/B/C.
 - Rules decided: no trailing-slash normalisation (design section 3); path captures decoded, literals raw (CHANGELOG 0.2.0); limits enforced by HTTPAnt on the request (0.3.0); shutdown grace enforced by a Tower wrapper (0.4.0); forwarded headers believed only from configured trusted proxies (0.5.0).
@@ -20,7 +20,7 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 - Publish is the PM's call: the sweep (`docs/PATENT-SWEEP.md`) is accepted as honest and thin; the PM reads what is already on crates.io first.
 
 ## Next (in order)
-1. After the probes PR merges: remove its worktree + branch. Then ROADMAP row 4 rest: `acme-tls/1` (13, can be done once in HTTPAnt's acceptor), `h2`; optionally an actix-web adapter through `actix-server`/`actix-http` that takes HTTPAnt's acceptor (`docs/TLS-ADAPTER-PROBES.md`). Run `RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps` before every push (CI does; it caught a broken link on #26). Then row 5 (benchmarks); the flaky-suite row needs evidence.
+1. After the actix doc PR merges: remove its worktree + branch. Then ROADMAP row 4 rest: `acme-tls/1` (13, can be done once in HTTPAnt's acceptor), `h2`; optionally an actix-web adapter through `actix-server`/`actix-http` that runs HTTPAnt's own acceptor (the clean route; not built, `docs/TLS-ADAPTER-PROBES.md`). Run `RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps` before every push (CI does; it caught a broken link on #26). Then row 5 (benchmarks); the flaky-suite row needs evidence.
 
 ## Standing constraints
 - `CARGO_BUILD_JOBS=2`, one build at a time. Primary checkout stays on `main`; every branch in `C:\Projects\httpant-wt-<topic>`.
