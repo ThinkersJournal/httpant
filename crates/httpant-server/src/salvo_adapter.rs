@@ -45,8 +45,8 @@ impl ServerAdapter for SalvoAdapter {
             opts.listener.set_nonblocking(true)?;
             let addr = opts.listener.local_addr()?;
             let acceptor = TcpAcceptor::try_from(TcpListener::from_std(opts.listener)?)?;
-            let close = Arc::new(Notify::new());
-            let acceptor = Closable::new(acceptor, Arc::clone(&close));
+            let (close, closed) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
+            let acceptor = Closable::new(acceptor, Arc::clone(&close), Arc::clone(&closed));
             let in_flight = Arc::new(InFlight::default());
             let goal = Goal {
                 svc: Arc::new(Mutex::new(svc)),
@@ -64,7 +64,10 @@ impl ServerAdapter for SalvoAdapter {
                     _ = stopped => {
                         // Graceful: stop accepting, finish requests in flight, close idle connections, then return.
                         // salvo keeps the listening socket open until it returns, so a client could still connect while it drains: close it first.
+                        // salvo drops its pending accept when the stop command arrives and never polls the acceptor again, so the close
+                        // has to be seen to happen first; the time limit only keeps a wedged accept loop from hanging shutdown.
                         close.notify_one();
+                        let _ = tokio::time::timeout(std::time::Duration::from_secs(2), closed.notified()).await;
                         handle.stop_graceful(None);
                         serving.await;
                         // salvo's own wait counts connections; the contract counts requests, so wait for those too.
@@ -215,15 +218,17 @@ struct Closable {
     inner: Option<TcpAcceptor>,
     holdings: Vec<Holding>,
     close: Arc<Notify>,
+    closed: Arc<Notify>,
 }
 
 impl Closable {
-    fn new(inner: TcpAcceptor, close: Arc<Notify>) -> Self {
+    fn new(inner: TcpAcceptor, close: Arc<Notify>, closed: Arc<Notify>) -> Self {
         let holdings = inner.holdings().to_vec();
         Self {
             inner: Some(inner),
             holdings,
             close,
+            closed,
         }
     }
 }
@@ -252,6 +257,7 @@ impl Acceptor for Closable {
             None => {
                 // Dropping the acceptor closes the socket: from here on connecting is refused.
                 self.inner = None;
+                self.closed.notify_one();
                 std::future::pending().await
             }
         }
