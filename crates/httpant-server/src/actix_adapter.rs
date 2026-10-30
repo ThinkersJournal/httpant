@@ -41,8 +41,11 @@ impl ServerAdapter for ActixAdapter {
         c.graceful_shutdown = Support::Yes;
         // Handlers are `Send` futures; a handler written against actix's `!Send` types is the later `LocalHandler` capability.
         c.local_handlers = Support::No;
-        // HTTPAnt terminates TLS below the adapters only where the web library accepts an already-handshaken stream; this one is edge mode only.
-        c.tls = Support::No;
+        c.tls = if cfg!(feature = "tls") {
+            Support::Yes
+        } else {
+            Support::No
+        };
         c
     }
 
@@ -52,13 +55,21 @@ impl ServerAdapter for ActixAdapter {
             let svc = opts.wrap(svc);
             let addr = opts.listener.local_addr()?;
             let listener = opts.listener;
+            #[cfg(feature = "tls")]
+            let tls = opts.tls.clone().map(|t| {
+                let timeout = t.timeout();
+                (
+                    crate::actix_tls::config(&t, tokio::runtime::Handle::current()),
+                    timeout,
+                )
+            });
             let (handle_tx, handle_rx) = oneshot::channel::<std::io::Result<ServerHandle>>();
             let (done_tx, done_rx) = oneshot::channel::<()>();
             std::thread::Builder::new()
                 .name("httpant-actix".into())
                 .spawn(move || {
                     actix_web::rt::System::new().block_on(async move {
-                        let built = HttpServer::new(move || {
+                        let server = HttpServer::new(move || {
                             let svc = svc.clone();
                             App::new().default_service(web::to(
                                 move |req: HttpRequest, payload: web::Payload| {
@@ -67,9 +78,17 @@ impl ServerAdapter for ActixAdapter {
                             ))
                         })
                         .workers(2)
-                        .disable_signals()
-                        .listen(listener)
-                        .map(HttpServer::run);
+                        .disable_signals();
+                        #[cfg(feature = "tls")]
+                        let built = match tls {
+                            Some((config, timeout)) => server
+                                .tls_handshake_timeout(timeout)
+                                .listen_rustls_0_23(listener, config),
+                            None => server.listen(listener),
+                        };
+                        #[cfg(not(feature = "tls"))]
+                        let built = server.listen(listener);
+                        let built = built.map(HttpServer::run);
                         match built {
                             Ok(server) => {
                                 let _ = handle_tx.send(Ok(server.handle()));
@@ -104,6 +123,10 @@ async fn handle(svc: BoxService, req: HttpRequest, payload: web::Payload) -> Htt
     };
     if let Some(peer) = req.peer_addr() {
         request.extensions_mut().insert(crate::PeerAddr(peer));
+    }
+    #[cfg(feature = "tls")]
+    if req.app_config().secure() {
+        request.extensions_mut().insert(crate::TlsConnection);
     }
     let res = svc
         .oneshot(request)

@@ -65,6 +65,10 @@ impl ServerCert {
         })
     }
 
+    pub(crate) fn certified(&self) -> Arc<CertifiedKey> {
+        Arc::clone(&self.certified)
+    }
+
     /// The leaf certificate, DER.
     pub fn leaf_der(&self) -> &[u8] {
         self.certified
@@ -161,6 +165,14 @@ impl TlsAcceptor {
             audit: None,
             served: Arc::default(),
         }
+    }
+
+    pub(crate) fn source(&self) -> Arc<dyn CertSource> {
+        Arc::clone(&self.source)
+    }
+
+    pub(crate) fn timeout(&self) -> Duration {
+        self.handshake_timeout
     }
 
     /// Report [`TlsEvent`]s (refused handshakes, a changed certificate) to `sink`, for the audit trail.

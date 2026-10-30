@@ -27,6 +27,7 @@ checksum = "d20a22850ea7fecad12c5f8cd97d246c3af1f04ef400033977c2f13425c45816"
 dependencies = [
  "actix-codec",
  "actix-service",
+ "actix-tls",
  "actix-utils",
  "bitflags",
  "bytes",
@@ -100,6 +101,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "actix-tls"
+version = "3.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5d41b969edabcf8784fe0215f88b33e120dde04aace700bda8f78d77ca6bd81"
+dependencies = [
+ "actix-rt",
+ "actix-service",
+ "actix-utils",
+ "futures-core",
+ "impl-more",
+ "pin-project-lite",
+ "rustls-pki-types",
+ "tokio",
+ "tokio-rustls",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "actix-utils"
 version = "3.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -121,6 +141,7 @@ dependencies = [
  "actix-rt",
  "actix-server",
  "actix-service",
+ "actix-tls",
  "actix-utils",
  "bytes",
  "bytestring",

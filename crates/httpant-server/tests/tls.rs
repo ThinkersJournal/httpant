@@ -22,6 +22,8 @@ const ADAPTERS: &[&str] = &[
     "hyper",
     #[cfg(feature = "axum")]
     "axum",
+    #[cfg(feature = "actix-web")]
+    "actix-web",
 ];
 
 struct Made {

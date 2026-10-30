@@ -13,7 +13,7 @@ axum = ["dep:axum"]
 actix-web = ["dep:actix-web", "dep:futures-util", "dep:http-body-util"]
 salvo = ["dep:salvo_core", "dep:futures-util", "dep:http-body-util"]
 warp = ["dep:warp", "dep:bytes", "dep:futures-util", "dep:http-body-util"]
-tls = ["dep:rustls", "dep:tokio-rustls", "dep:x509-parser"]
+tls = ["dep:rustls", "dep:tokio-rustls", "dep:x509-parser", "actix-web?/rustls-0_23"]
 poem = ["dep:poem", "dep:futures-util", "dep:http-body-util"]
 
 [dependencies]
