@@ -12,7 +12,7 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 
 ## State
 - Work list: `ROADMAP.md` (the repo's own, PM's order). Merged: slices 1a-7, percent-decoding (#17, 0.2.0), limits (#18, 0.3.0), shutdown grace (#19, 0.4.0).
-- **Open PR:** patent sweep (branch `docs/patent-sweep`, worktree `C:Projectshttpant-wt-sweep`, 0.5.2 placeholder, docs only). TLS first half merged (#21, 0.5.1); WebHostAnt told.
+- **Open PR:** patent sweep (branch `docs/patent-sweep`, worktree `C:\Projects\httpant-wt-sweep`, 0.5.2 placeholder, docs only). TLS first half merged (#21, 0.5.1); WebHostAnt told.
 - **Lesson (salvo):** Windows green is not Linux green. Wait for the ubuntu job before calling an adapter or a limit done.
 - **Option A (Tower core, thin adapters) is PROVISIONAL**: PM told me to proceed 2026-10-29 while CireSnave decides A/B/C.
 - Rules decided: no trailing-slash normalisation (design section 3); path captures decoded, literals raw (CHANGELOG 0.2.0); limits enforced by HTTPAnt on the request (0.3.0); shutdown grace enforced by a Tower wrapper (0.4.0); forwarded headers believed only from configured trusted proxies (0.5.0).
