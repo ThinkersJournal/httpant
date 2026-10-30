@@ -169,6 +169,16 @@ pub fn app_with_gates() -> (App, Gates) {
         .get("/bin", || async { binary_body() })
         .get("/param/:x", param)
         .get("/file/*rest", param)
+        .get("/hang", {
+            let started = Arc::clone(&gates.slow_started);
+            move || {
+                let started = Arc::clone(&started);
+                async move {
+                    started.notify_one();
+                    std::future::pending::<String>().await
+                }
+            }
+        })
         .post("/sink", sink)
         .get("/who/:x", who)
         .post("/who/:x", who)

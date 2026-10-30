@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt adapter conformance suite (design `docs/HTTPANT-DESIGN.md`, section 6).
 //!
-//! - [`CASES`]: fourteen cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
+//! - [`CASES`]: fifteen cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
 //!   minimal HTTP/1.1 client. The client is deliberately not HTTPAnt, hyper or any adapter, so a defect cannot hide on both ends of a test.
 //! - Every case lists the known-bad [`Mutant`]s it must fail on. [`check_case`] demands both halves: the reference passes **and** every mutant
 //!   fails. A case that passes on its mutant is itself a failing test.
 //! - Cases 1-7 are the old crate's defects restated; cases 8-12 (streaming, shutdown, keep-alive, concurrency, HEAD) need a live connection
-//!   and are in `live`; cases 13 (path encoding) and 14 (limits) are HTTPAnt's own rules. [`measure`] turns three of them into the capability matrix (`docs/CAPABILITY-MATRIX.md`).
+//!   and are in `live`; cases 13 (path encoding), 14 (limits) and 15 (shutdown grace) are HTTPAnt's own rules. [`measure`] turns three of them into the capability matrix (`docs/CAPABILITY-MATRIX.md`).
 //!
 //! A new adapter is tested by implementing [`Subject`] for it (or wrapping it in [`AdapterSubject`]) and calling [`run_suite`].
 
@@ -56,8 +56,8 @@ impl std::fmt::Debug for Case {
     }
 }
 
-/// The fourteen cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
-pub const CASES: [Case; 14] = [
+/// The fifteen cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
+pub const CASES: [Case; 15] = [
     Case {
         number: 1,
         id: "method-fidelity",
@@ -164,6 +164,13 @@ pub const CASES: [Case; 14] = [
             Mutant::NoBodyLimit,
         ],
         run: cases::limits,
+    },
+    Case {
+        number: 15,
+        id: "shutdown-grace",
+        requirement: "a request that never finishes does not hold shutdown for ever: shutdown waits for the grace period, then returns, and the client of the abandoned request gets a 503 or a closed connection",
+        mutants: &[Mutant::NoShutdownGrace],
+        run: live::shutdown_grace,
     },
 ];
 
@@ -277,6 +284,7 @@ mod tests {
     case_test!(case_12_head, 11);
     case_test!(case_13_path_encoding, 12);
     case_test!(case_14_limits, 13);
+    case_test!(case_15_shutdown_grace, 14);
 
     #[test]
     fn client_cases_are_numbered_in_order_and_each_mutant_is_used_once() {

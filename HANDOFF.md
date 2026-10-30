@@ -11,15 +11,15 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 `docs/BENCHMARKS.md`, `docs/ACTIX-ADAPTER-NOTES.md`.
 
 ## State
-- Work list: `ROADMAP.md` (the repo's own, PM's order). Merged: slices 1a-7 (#7-#16; adapters hyper, axum, actix-web, poem, salvo, warp; rocket not built, source reading).
-- **Open PRs:** limits (this branch `feat/server-limits`, worktree `C:\\Projects\\httpant-wt-limits`, 0.3.0 placeholder, Breaking: 2 MiB body default).
+- Work list: `ROADMAP.md` (the repo's own, PM's order). Merged: slices 1a-7, percent-decoding (#17, 0.2.0), limits (#18, 0.3.0).
+- **Open PR:** shutdown grace period (this branch `feat/shutdown-grace`, worktree `C:\Projects\httpant-wt-grace`, 0.4.0 placeholder, Breaking: bounded `shutdown()`, adapter API gains `Grace`).
 - **Lesson (salvo):** Windows green is not Linux green. Wait for the ubuntu job before calling an adapter or a limit done.
 - **Option A (Tower core, thin adapters) is PROVISIONAL**: PM told me to proceed 2026-10-29 while CireSnave decides A/B/C.
-- Rules decided: no trailing-slash normalisation (design section 3); path captures decoded, literals raw (CHANGELOG 0.2.0); limits enforced by HTTPAnt on the request, not by each framework (CHANGELOG 0.3.0).
+- Rules decided: no trailing-slash normalisation (design section 3); path captures decoded, literals raw (CHANGELOG 0.2.0); limits enforced by HTTPAnt on the request (0.3.0); shutdown grace enforced by a Tower wrapper, not by each framework (0.4.0).
 
 ## Next (in order)
 1. After each merge: remove the worktree + branch (CLAUDE.md section 3).
-2. `ROADMAP.md` row 3 (grace period), then 4 (TLS: ask the WebHostAnt lane first), then 5.
+2. `ROADMAP.md` row 4: TLS hook. First ask the WebHostAnt lane (peer `p362rz26` per the PM; peer ids rotate, find it by cwd `C:\Projects\WebHostAnt`) what it needs; HTTPAnt must not become a TLS stack. Then row 5 (benchmarks).
 
 ## Standing constraints
 - `CARGO_BUILD_JOBS=2`, one build at a time. Primary checkout stays on `main`; every branch in `C:\Projects\httpant-wt-<topic>`.

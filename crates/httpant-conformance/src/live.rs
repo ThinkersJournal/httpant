@@ -415,3 +415,57 @@ pub async fn measure(s: &dyn Subject) -> Measured {
         graceful_shutdown: support("graceful shutdown", &s.name(), &graceful_shutdown(s).await),
     }
 }
+
+/// Case 15: a request that never finishes does not hold shutdown for ever. Shutdown returns once the grace period is over, the client
+/// is told (`503`, or the connection ends), and it does not return before the grace period is over.
+pub fn shutdown_grace(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
+    Box::pin(async move {
+        const GRACE: Duration = Duration::from_millis(1500);
+        let (app, gates) = app::app_with_gates();
+        let server = s
+            .start_with_grace(app, Some(GRACE))
+            .await
+            .map_err(|e| format!("could not start: {e}"))?;
+        let addr = server.addr();
+        let mut stuck = open(addr).await?;
+        stuck
+            .send(&RawRequest::new("GET", "/hang"))
+            .await
+            .map_err(|e| format!("send /hang: {e}"))?;
+        ensure!(
+            signalled(&gates.slow_started).await,
+            "the /hang handler never started"
+        );
+        let started = tokio::time::Instant::now();
+        let stopping = tokio::spawn(server.shutdown());
+        // Well before the grace period is over, the request is still being waited for.
+        tokio::time::sleep(GRACE / 3).await;
+        ensure!(
+            !stopping.is_finished(),
+            "shutdown returned after {:?}, before the {GRACE:?} grace period was over: a request in flight was cut early",
+            started.elapsed()
+        );
+        // After it, shutdown returns, within a margin that covers a slow machine but is shorter than the fallback abort (`FORCE_WAIT`), so only a real forced end passes.
+        match tokio::time::timeout(GRACE + Duration::from_secs(3), stopping).await {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(e))) => return Err(format!("shutdown failed: {e}")),
+            Ok(Err(e)) => return Err(format!("shutdown task: {e}")),
+            Err(_) => {
+                return Err(format!(
+                    "shutdown did not return {:?} after it was requested, with a grace period of {GRACE:?}: a request that never finishes holds it",
+                    started.elapsed()
+                ));
+            }
+        }
+        // The client of the abandoned request was told: a 503 or a closed connection, not silence.
+        // An error here means the connection ended, which is also an answer.
+        if let Ok(res) = stuck.response("GET").await {
+            ensure!(
+                res.status == 503,
+                "the abandoned request was answered {} (expected 503 or a closed connection)",
+                res.status
+            );
+        }
+        Ok(())
+    })
+}

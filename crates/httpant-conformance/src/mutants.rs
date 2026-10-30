@@ -44,6 +44,8 @@ pub enum Mutant {
     SerialiseRequests,
     /// A HEAD response loses the headers the GET response has.
     HeadStripsHeaders,
+    /// Shutdown waits for requests in flight for ever, whatever grace period it is given.
+    NoShutdownGrace,
     /// The default limits, except that request targets are not limited.
     NoUriLimit,
     /// The default limits, except that header fields are not counted.
@@ -89,6 +91,7 @@ impl Mutant {
             Mutant::SerialiseRequests => "serialise-requests",
             Mutant::HeadStripsHeaders => "head-strips-headers",
             Mutant::DecodeBeforeRouting => "decode-before-routing",
+            Mutant::NoShutdownGrace => "no-shutdown-grace",
             Mutant::NoUriLimit => "no-uri-limit",
             Mutant::NoHeaderCountLimit => "no-header-count-limit",
             Mutant::NoHeaderBytesLimit => "no-header-bytes-limit",
@@ -105,6 +108,7 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         // The defect is in how the subject builds or runs the service, not in the service.
         Mutant::NoMiddleware
         | Mutant::AbortOnShutdown
+        | Mutant::NoShutdownGrace
         | Mutant::NoUriLimit
         | Mutant::NoHeaderCountLimit
         | Mutant::NoHeaderBytesLimit
@@ -321,7 +325,12 @@ pub fn serve_aborting(svc: BoxService, listener: std::net::TcpListener) -> Resul
         // Dropping the set aborts every connection task: nothing in flight is allowed to finish.
         drop(conns);
     });
-    Ok(RunningServer::new(addr, stop, task))
+    Ok(RunningServer::new(
+        addr,
+        stop,
+        task,
+        httpant_server::Grace::new(None),
+    ))
 }
 
 fn decode_before_routing(svc: BoxService, mut req: Request) -> BoxFuture<'static, Response> {
