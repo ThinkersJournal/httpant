@@ -23,10 +23,10 @@ crates.io). What is here now:
 
 - `crates/httpant-core`: the `http` crate's request/response types, a streaming `Body` with explicit size limits, `Error`, `IntoResponse`,
   `Capabilities`, a `Router` and `Handler`, and the boxed Tower service type adapters run.
-- `crates/httpant-server`: the `Server` builder, the `ServerAdapter` trait, the hyper reference adapter and (feature `axum`) the axum adapter (`cargo run --example hello -p httpant-server`).
+- `crates/httpant-server`: the `Server` builder, the `ServerAdapter` trait, the hyper reference adapter and (features `axum`, `actix-web`) the axum and actix-web adapters (`cargo run --example hello -p httpant-server`).
 - `crates/httpant-client`: the `Client` builder, the `ClientAdapter` trait and the hyper-util reference adapter (plain `http://` for now).
 - `crates/httpant-conformance`: conformance cases 1-12 over real sockets against an independent raw-TCP HTTP/1.1 client, each with known-bad mutants it must fail on.
-  Results per adapter: [`docs/CAPABILITY-MATRIX.md`](docs/CAPABILITY-MATRIX.md). Client cases 1-7 run against a raw-TCP peer. Adapters other than hyper (client) and hyper and axum (server) are not built.
+  Results per adapter: [`docs/CAPABILITY-MATRIX.md`](docs/CAPABILITY-MATRIX.md). Client cases 1-7 run against a raw-TCP peer. Adapters other than hyper (client) and hyper, axum and actix-web (server) are not built.
 - `docs/HTTPANT-DESIGN.md`: the design, including the nine-line hello-world the first adapter must make true.
 
 Nothing is published. The design option (A, Tower core with thin adapters) is **provisional** until CireSnave decides.
