@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use std::convert::Infallible;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::task::{Context, Poll};
 
@@ -12,7 +13,7 @@ use salvo_core::conn::tcp::TcpAcceptor;
 use salvo_core::http::ResBody;
 use salvo_core::{Depot, FlowCtrl, Handler, Router, Server, Service, async_trait};
 use tokio::net::TcpListener;
-use tokio::sync::oneshot;
+use tokio::sync::{Notify, oneshot};
 use tower::ServiceExt;
 
 use crate::{RunningServer, ServeOptions, ServerAdapter};
@@ -43,7 +44,11 @@ impl ServerAdapter for SalvoAdapter {
             opts.listener.set_nonblocking(true)?;
             let addr = opts.listener.local_addr()?;
             let acceptor = TcpAcceptor::try_from(TcpListener::from_std(opts.listener)?)?;
-            let goal = Goal(Arc::new(Mutex::new(svc)));
+            let in_flight = Arc::new(InFlight::default());
+            let goal = Goal {
+                svc: Arc::new(Mutex::new(svc)),
+                in_flight: Arc::clone(&in_flight),
+            };
             let router = Router::with_path("{**rest}").goal(goal);
             let server = Server::new(acceptor);
             let handle = server.handle();
@@ -57,6 +62,8 @@ impl ServerAdapter for SalvoAdapter {
                         // Graceful: stop accepting, finish requests in flight, close idle connections, then return.
                         handle.stop_graceful(None);
                         serving.await;
+                        // salvo's own wait counts connections; the contract counts requests, so wait for those too.
+                        in_flight.drained().await;
                     }
                 }
             });
@@ -66,7 +73,41 @@ impl ServerAdapter for SalvoAdapter {
 }
 
 /// The boxed service is `Send` only and salvo wants `Sync`: a mutex held just long enough to clone it.
-struct Goal(Arc<Mutex<BoxService>>);
+struct Goal {
+    svc: Arc<Mutex<BoxService>>,
+    in_flight: Arc<InFlight>,
+}
+
+/// Requests the handler has started and not finished.
+#[derive(Default)]
+struct InFlight {
+    count: AtomicUsize,
+    changed: Notify,
+}
+
+impl InFlight {
+    async fn drained(&self) {
+        loop {
+            let changed = self.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            if self.count.load(Ordering::Acquire) == 0 {
+                return;
+            }
+            changed.await;
+        }
+    }
+}
+
+struct InFlightGuard(Arc<InFlight>);
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        if self.0.count.fetch_sub(1, Ordering::AcqRel) == 1 {
+            self.0.changed.notify_waiters();
+        }
+    }
+}
 
 #[async_trait]
 impl Handler for Goal {
@@ -78,8 +119,10 @@ impl Handler for Goal {
         ctrl: &mut FlowCtrl,
     ) {
         ctrl.skip_rest();
+        self.in_flight.count.fetch_add(1, Ordering::AcqRel);
+        let guard = InFlightGuard(Arc::clone(&self.in_flight));
         let svc = self
-            .0
+            .svc
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
@@ -121,14 +164,16 @@ impl Handler for Goal {
             res.headers_mut()
                 .insert(http::header::CONTENT_LENGTH, len.into());
         }
-        let stream = futures_util::stream::unfold(body, |mut body| async move {
+        let stream = futures_util::stream::unfold((body, guard), |(mut body, guard)| async move {
             loop {
                 match body.frame().await? {
                     Ok(frame) => match frame.into_data() {
-                        Ok(data) => return Some((Ok::<Bytes, std::io::Error>(data), body)),
+                        Ok(data) => {
+                            return Some((Ok::<Bytes, std::io::Error>(data), (body, guard)));
+                        }
                         Err(_) => continue,
                     },
-                    Err(e) => return Some((Err(std::io::Error::other(e)), body)),
+                    Err(e) => return Some((Err(std::io::Error::other(e)), (body, guard))),
                 }
             }
         });
