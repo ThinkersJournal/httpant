@@ -23,6 +23,8 @@ pub struct ServeOptions {
     pub trusted_proxies: TrustedProxies,
     /// Answers the ACME HTTP-01 challenge prefix before any route, see [`ChallengeResponder`] (default: none, the prefix is the application's).
     pub challenge: Option<Arc<dyn ChallengeResponder>>,
+    /// Redirect cleartext requests for the listed hosts to HTTPS, see [`HttpsRedirect`](crate::HttpsRedirect) (default: none).
+    pub https_redirect: Option<crate::HttpsRedirect>,
     /// Terminate TLS on `listener` with this acceptor (feature `tls`). Adapters whose [`Capabilities::tls`] is not `Yes` are refused before they start.
     #[cfg(feature = "tls")]
     pub tls: Option<crate::TlsAcceptor>,
@@ -37,6 +39,7 @@ impl ServeOptions {
             limits: Limits::default(),
             trusted_proxies: TrustedProxies::none(),
             challenge: None,
+            https_redirect: None,
             #[cfg(feature = "tls")]
             tls: None,
             grace: Grace::new(Some(DEFAULT_SHUTDOWN_GRACE)),
@@ -52,6 +55,12 @@ impl ServeOptions {
     /// Trust these peers to forward the client's address and scheme (`X-Forwarded-For`, `X-Forwarded-Proto`); nobody is trusted by default.
     pub fn trusted_proxies(mut self, proxies: TrustedProxies) -> Self {
         self.trusted_proxies = proxies;
+        self
+    }
+
+    /// Redirect cleartext requests for the listed hosts to HTTPS, see [`HttpsRedirect`](crate::HttpsRedirect).
+    pub fn redirect_to_https(mut self, redirect: crate::HttpsRedirect) -> Self {
+        self.https_redirect = Some(redirect);
         self
     }
 
@@ -90,7 +99,10 @@ impl ServeOptions {
     pub fn wrap(&self, svc: BoxService) -> BoxService {
         self.grace.wrap(self.limits.wrap(crate::challenge::wrap(
             self.challenge.clone(),
-            crate::edge::wrap(self.trusted_proxies.clone(), svc),
+            crate::edge::wrap(
+                self.trusted_proxies.clone(),
+                crate::redirect::wrap(self.https_redirect.clone(), svc),
+            ),
         )))
     }
 }

@@ -14,6 +14,7 @@ mod hyper_adapter;
 mod limits;
 #[cfg(feature = "poem")]
 mod poem_adapter;
+mod redirect;
 #[cfg(feature = "salvo")]
 mod salvo_adapter;
 #[cfg(feature = "tls")]
@@ -41,6 +42,7 @@ pub use hyper_adapter::HyperAdapter;
 pub use limits::Limits;
 #[cfg(feature = "poem")]
 pub use poem_adapter::PoemAdapter;
+pub use redirect::HttpsRedirect;
 #[cfg(feature = "salvo")]
 pub use salvo_adapter::SalvoAdapter;
 #[cfg(feature = "tls")]
@@ -76,6 +78,7 @@ pub struct Server {
     grace: Option<Option<Duration>>,
     trusted_proxies: TrustedProxies,
     challenge: Option<Arc<dyn ChallengeResponder>>,
+    https_redirect: Option<HttpsRedirect>,
     #[cfg(feature = "tls")]
     tls: Option<TlsAcceptor>,
 }
@@ -97,6 +100,7 @@ impl Server {
             grace: None,
             trusted_proxies: TrustedProxies::none(),
             challenge: None,
+            https_redirect: None,
             #[cfg(feature = "tls")]
             tls: None,
         }
@@ -143,6 +147,7 @@ impl Server {
             grace: None,
             trusted_proxies: TrustedProxies::none(),
             challenge: None,
+            https_redirect: None,
             #[cfg(feature = "tls")]
             tls: None,
         }
@@ -165,6 +170,13 @@ impl Server {
     #[cfg(feature = "tls")]
     pub fn tls(mut self, acceptor: TlsAcceptor) -> Self {
         self.tls = Some(acceptor);
+        self
+    }
+
+    /// Redirect cleartext requests for the listed hosts to HTTPS (`308`, any other host `421`), see [`HttpsRedirect`]. This is the port-80
+    /// server: give it the [`acme_challenge`](Self::acme_challenge) responder and the challenge prefix keeps working there.
+    pub fn redirect_to_https(mut self, redirect: HttpsRedirect) -> Self {
+        self.https_redirect = Some(redirect);
         self
     }
 
@@ -240,6 +252,10 @@ impl Server {
             .trusted_proxies(proxies);
         let opts = match self.challenge.clone() {
             Some(responder) => opts.acme_challenge(responder),
+            None => opts,
+        };
+        let opts = match self.https_redirect.clone() {
+            Some(redirect) => opts.redirect_to_https(redirect),
             None => opts,
         };
         #[cfg(feature = "tls")]
