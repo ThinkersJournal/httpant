@@ -40,3 +40,34 @@ impl Default for Capabilities {
         }
     }
 }
+
+/// What a client adapter can and cannot do (design section 5). Filled by the client conformance run, not by assertion.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ClientCapabilities {
+    /// A request body is sent as it is produced.
+    pub streaming_request_bodies: Support,
+    /// A response body reaches the caller as it arrives.
+    pub streaming_response_bodies: Support,
+    /// Idle connections are reused for later requests to the same host.
+    pub connection_reuse: Support,
+    /// `3xx` responses are followed. A client that does not follow returns the `3xx` as it is, never half-follows.
+    pub follows_redirects: Support,
+    /// `https://` is supported.
+    pub tls: Support,
+    /// The limit `ClientResponse::bytes`/`text` apply unless told otherwise, in bytes.
+    pub default_body_limit: usize,
+}
+
+impl Default for ClientCapabilities {
+    fn default() -> Self {
+        Self {
+            streaming_request_bodies: Support::Unknown,
+            streaming_response_bodies: Support::Unknown,
+            connection_reuse: Support::Unknown,
+            follows_redirects: Support::Unknown,
+            tls: Support::Unknown,
+            default_body_limit: DEFAULT_BODY_LIMIT,
+        }
+    }
+}

@@ -20,6 +20,7 @@ tower.workspace = true
 axum = { workspace = true, optional = true, features = ["tokio", "http1"] }
 
 [dev-dependencies]
+httpant-client.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }
 
 # Examples are built and run in CI; `test = true` also runs the unit tests inside them.

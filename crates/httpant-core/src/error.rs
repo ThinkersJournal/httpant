@@ -39,6 +39,38 @@ pub enum Error {
         /// The adapter id that was requested.
         id: String,
     },
+    /// A client request URL that is not usable.
+    #[error("invalid URL `{url}`: {reason}; use an absolute http:// URL")]
+    InvalidUrl {
+        /// The URL as given.
+        url: String,
+        /// What is wrong with it.
+        reason: &'static str,
+    },
+    /// A header name or value a client request cannot carry.
+    #[error(
+        "invalid header `{name}`: names are HTTP tokens and values may not contain CR, LF or NUL"
+    )]
+    InvalidHeader {
+        /// The header name as given (lossy for non-UTF8 bytes).
+        name: String,
+    },
+    /// A client request for a scheme the chosen client adapter does not do (https until the TLS hook exists).
+    #[error(
+        "scheme `{scheme}` is not supported by the `{adapter}` client adapter: use http:// or another adapter"
+    )]
+    UnsupportedScheme {
+        /// The scheme asked for.
+        scheme: String,
+        /// The client adapter id.
+        adapter: &'static str,
+    },
+    /// A client request did not finish before its timeout.
+    #[error("request timed out after {0:?}: raise the timeout or check the peer")]
+    Timeout(std::time::Duration),
+    /// A client request failed in the transport (connect, send, receive).
+    #[error("request failed: {0}; check the address and that the peer is up")]
+    Request(BoxError),
 }
 
 impl Error {
@@ -47,9 +79,14 @@ impl Error {
         match self {
             Error::BodyTooLarge { .. } => StatusCode::PAYLOAD_TOO_LARGE,
             Error::Body(_) | Error::NotUtf8 => StatusCode::BAD_REQUEST,
-            Error::AdapterNotCompiledIn { .. } | Error::Io(_) | Error::UnknownAdapter { .. } => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
+            Error::AdapterNotCompiledIn { .. }
+            | Error::Io(_)
+            | Error::UnknownAdapter { .. }
+            | Error::InvalidUrl { .. }
+            | Error::InvalidHeader { .. }
+            | Error::UnsupportedScheme { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::Timeout(_) => StatusCode::GATEWAY_TIMEOUT,
+            Error::Request(_) => StatusCode::BAD_GATEWAY,
         }
     }
 }

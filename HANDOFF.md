@@ -15,13 +15,16 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 - Merged: slice 1a (#7, 0.1.0): `httpant-core` types, conformance skeleton, old src tree deleted; `cargo deny` is a required check.
 - Merged: slice 1b (#8, 0.1.1): Router/Handler/layers, `httpant-server` (Server, ServerAdapter, HyperAdapter), conformance cases 1-7 with 9 mutants, hello example in CI.
 - Merged: slice 2a (#9, 0.1.2): axum adapter behind feature `axum`; cases 1-7 pass on hyper and axum.
-- **Slice 2b PR open** (branch `feat/conformance-2b`, worktree `C:\Projects\httpant-wt-conf2b`, 0.1.3 placeholder): cases 8-12 on hyper and axum, 6 more mutants,
+- Merged: slice 2b (#10, 0.1.3) - history only; summary below kept for the matrix/doc mechanism.
+- **Slice 3 PR (client half) in progress/open** (branch `feat/client-half`, worktree `C:\Projects\httpant-wt-client`, 0.1.4 placeholder): `httpant-client`, 7 client cases + 7 mutants, client matrix, SECURITY.md + README EOL note (PM [TASK] 2026-10-30), hello uses `Client`.
+- (slice 2b detail) (branch `feat/conformance-2b`, worktree `C:\Projects\httpant-wt-conf2b`, 0.1.3 placeholder): cases 8-12 on hyper and axum, 6 more mutants,
   `docs/CAPABILITY-MATRIX.md` (test-rendered; `HTTPANT_BLESS=1 cargo test -p httpant-conformance` rewrites it), Router HEAD->GET, hyper adapter now drains on shutdown (case 9 found it did not).
 - **Option A (Tower core, thin adapters) is PROVISIONAL**: PM told me to proceed 2026-10-29 while CireSnave decides A/B/C. If he picks B or C, 1a is cheap to redo.
 - Trailing slash rule: no normalisation (decided, design section 3).
 
 ## Next (in order)
-1. Slice 3 client half (hyper-util adapter, client conformance, then the real nine-line hello with `Client`); then actix (see ACTIX notes), others only if they pass.
+1. Actix server adapter (see ACTIX notes; Send handlers, opt-in `LocalHandler`), others only if they pass. PM: PATENT-SWEEP for the client half's new surface before it publishes.
+   Not built in the client yet: JSON helper (needs serde, own feature), TLS (hook with WebHostAnt), redirects, cookies, proxies, a `reqwest` adapter (UNVERIFIED that it streams both ways).
    Read ConfigurAnt's API before wiring settings (design section 10; not yet read, UNVERIFIED).
 2. Open design points: percent-decoding of path params (raw today), request header/body limits in `ServeOptions`, Path/Query extractors,
    a shutdown grace period (a request that never finishes blocks `shutdown()`), a mutant for `Connection: close` / `Expect: 100-continue` (case 10 has only a keep-alive mutant).
