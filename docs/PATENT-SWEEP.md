@@ -1,4 +1,4 @@
-# Patent sweep: HTTPAnt (httpant, httpant-core, httpant-server, httpant-client; line 0.5.x) @ 2d8a670 (0.5.1)
+# Patent sweep: HTTPAnt (httpant, httpant-core, httpant-server, httpant-client; line 0.5.x) @ 2d8a670 (0.5.1); addendum @ 340e667 (0.5.2)
 
 Date: 2026-10-30; Run by: HTTPAnt lane, Claude Sonnet 5.5; Method: AI-assisted search and read (web search over Google Patents and Justia, then claims read with `tools/patent-claims.py`); **NOT legal advice; NOT a freedom-to-operate opinion.**
 
@@ -50,13 +50,52 @@ Claims read in full with `tools/patent-claims.py`. Status is Google Patents', no
 | H6 | US20140258465A1 | Identification of originating IP address and client port connection to a web server via a proxy | Cisco | Abandoned | 1 | Conveying client address through a proxy | Claim: a proxy embeds an "XFS" value (TCP header); HTTPAnt is the receiver and reads the standard `X-Forwarded-For` | clear |
 | H7 | US20050021771A1 | System enabling server progressive workload reduction to support server maintenance | Individual / Cerner | Expired | 1 | Draining a server | Claim 1 is a URL-parsing switch directing new sessions to a probed server; no in-process drain/force | clear |
 
-## Not read
+## Not read (first pass; the two TLS-proxy patents were read in the addendum)
 
 Q3 (conformance suites of faulty implementations), Q6 and Q8 (trusted-proxy walking, bounded shutdown) and Q10 (request limits) surfaced no patent addressing the idea; the results were documentation and articles (the trusted-proxy walk and the grace-period-then-force pattern are in MDN, gRPC, Kestrel and Armeria documentation, which is prior art for ideas 5 and 6, not a patent). Several Q5 and Q9 results (routing-protocol graceful shutdown; TLS-proxy patents US8327128B1 and US20170302700A1) were judged out of scope from their titles and abstracts and were **not** read: they are `unread`, not `clear`.
 
 ## Needs review (to the PM)
 
 No hit has an unresolved overlap. The PM should decide whether the limits below are enough for a first release of the `0.x` line: the search was one pass over a general web index, not a boolean search of USPTO, EPO or WIPO with classification codes, and ideas 4, 8 and 9 got no query.
+
+## Addendum 2026-10-30 (second pass, at 340e667 = 0.5.2; code unchanged since 2d8a670, docs only)
+
+Done on the PM's ruling that ten general-web queries do not meet PATENT-SWEEP-PROCESS.md step 2. **What this pass did and did not do, exactly:**
+
+- **Google Patents.** The search tool this lane has is a general web search that can be limited to a domain; it is not Google Patents' own query interface (no boolean, no classification codes, no date or assignee filters), but with `allowed_domains: patents.google.com` it returns Google Patents pages. Queries A1-A5 below.
+- **Espacenet, WIPO PatentScope, USPTO.** The same tool limited to `worldwide.espacenet.com`, `patentscope.wipo.int` and `ppubs.uspto.gov`, queries B1-B8. It returned PatentScope record pages, USPTO full-text PDF titles and, from Espacenet, one unrelated record. **Espacenet's own search was not usable from this lane**, so no Espacenet search was performed in the sense of its classification search; the PatentScope/USPTO results were mostly irrelevant (cryptography, wireless, media proxies). Treat B1-B8 as having found nothing, with low confidence that anything could have been found.
+- Claims read in this pass with `tools/patent-claims.py`: US8327128B1, US20170302700A1 (the two that were unread), US7496962B2 and US12645555B1 (closest new hits). `US11397789`, `US11636170` (URL normalisation) and `US8683357` were looked at by title/abstract/claim 1 only (US8683357 claim 1 read; the two URL-normalisation applications could not be fetched, kind code unknown: **unread**).
+
+| # | idea | source | query |
+|---|---|---|---|
+| A1 | 4 | patents.google.com | URL path percent-decoding normalization reject encoded slash dot segments before routing request |
+| A2 | 8 | patents.google.com | private cryptographic key redacted from logs debug output error messages secret value type masking |
+| A3 | 9 | patents.google.com | server capability declaration per adapter determined by test run refuse start when feature unsupported rather than insecure fallback |
+| A4 | 2 | patents.google.com | conformance test suite interchangeable implementations broken implementations must fail test validity |
+| A5 | 6 | (done in the first pass as Q7; trusted-proxy, shutdown and limits as Q7, Q9, Q10) | |
+| B1 | 4 | espacenet, patentscope, ppubs | URL path percent-decoding normalization reject encoded slash dot segments routing |
+| B2 | 8 | same three | secret private key value redacted in debug output logging error messages |
+| B3 | 9 | same three | capability declaration adapter refuse to start when requested feature unsupported instead of fallback without encryption |
+| B4 | 2 | same three | conformance tests deliberately broken implementations verify test suite detects faults interchangeable adapters |
+| B5 | 6 | same three | X-Forwarded-For header trusted proxy addresses client IP determination web server |
+| B6 | 5 | same three | graceful shutdown web server in-flight requests grace period then terminate remaining |
+| B7 | 3 | same three | HTTP server maximum request header size count body size limit reject request too large before application (no results) |
+| B8 | 1 | same three | web server framework portable across multiple server implementations adapters common API middleware routes |
+| B9 | 7 | same three | TLS handshake certificate provider called per connection with server name replace certificate new connections without restart (one irrelevant result) |
+
+All queries run 2026-10-30. Ideas 1 to 9 now each have at least one Google Patents query and at least one query on the other three sources.
+
+Hits read in this pass:
+
+| # | patent | title | assignee | status | claim(s) read | overlap | our difference | verdict |
+|---|---|---|---|---|---|---|---|---|
+| H8 | US8327128B1 | Supporting secure sessions in a cloud-based proxy service | Cloudflare | Active (est. 2032) | 1, 7 | Terminating TLS with a certificate | A proxy that terminates the client's session with one certificate bound to several domains, decrypts, and opens a second secure session to an origin and re-encrypts; HTTPAnt terminates and serves the request itself, with no origin re-encryption and one certificate per name | clear |
+| H9 | US20170302700A1 | Providing forward secrecy in a terminating TLS connection proxy | Akamai | Application, active | 1 | TLS termination with a private key | Claim requires the key to be held remote from the server machine and the master secret recomputed from an ephemeral value; HTTPAnt holds the key in the same process and uses rustls' standard handshake | clear |
+| H10 | US7496962B2 | Intrusion detection strategies for hypertext transport protocol | Sourcefire/Cisco | Expired (fee; est. 2026) | 1 | Decoding obfuscated URIs | An intrusion-detection inspection engine with policy selection per web server; HTTPAnt is not an inspection engine and refuses unsafe encodings in a router | clear |
+| H11 | US12645555B1 | Deterministic conformance suites, validator implementation certification, replay-verifiable conformance receipts | Stone & Ink Archive | Active (priority 2026-01-09) | 1 | A conformance suite run against an implementation | Claim 1 binds a versioned profile to a policy pack identifier and digest and verifies replay-verifiable receipts and certificate registries; the HTTPAnt suite has none of these | clear |
+| H12 | US8683357B2 | Providing real time web application framework socket | Red Hat | Active (est. 2032) | 1 | A web application framework | Browser-side socket for widgets; unrelated mechanism | clear |
+
+Nothing in the second pass changes any verdict; no hit needs review. **Still not done:** a classification-code search (for example CPC H04L 67, H04L 9/32, G06F 11/36) on USPTO, EPO or WIPO; any pass by a person with the patent offices' own search interfaces; reading of the two URL-normalisation applications. The PM can accept the file as an honest record of a thin AI-assisted search, or ask for a person with those tools.
 
 ## Limitations
 
