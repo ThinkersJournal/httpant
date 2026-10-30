@@ -680,7 +680,7 @@ async fn acme_tls_alpn_is_answered_with_the_challenge_certificate_and_closed() {
             leaf, normal.der,
             "{id}: an ordinary client got the challenge certificate"
         );
-        assert!(reply.starts_with("HTTP/1.1 200"), "{id}: {reply}");
+        assert!(reply.starts_with("HTTP/1.1 200"), "{id}: not a 200");
         assert_eq!(
             asked.load(Ordering::SeqCst),
             before,
