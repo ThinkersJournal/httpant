@@ -7,6 +7,7 @@ mod actix_adapter;
 mod adapter;
 #[cfg(feature = "axum")]
 mod axum_adapter;
+mod challenge;
 mod edge;
 mod grace;
 mod hyper_adapter;
@@ -30,6 +31,7 @@ pub use actix_adapter::ActixAdapter;
 pub use adapter::{FORCE_WAIT, RunningServer, ServeOptions, ServerAdapter};
 #[cfg(feature = "axum")]
 pub use axum_adapter::AxumAdapter;
+pub use challenge::{CHALLENGE_PREFIX, ChallengeResponder};
 pub use edge::{BadProxy, Origin, PeerAddr, Scheme, TrustedProxies};
 pub use grace::{DEFAULT_SHUTDOWN_GRACE, Grace};
 pub use httpant_core as core;
@@ -73,6 +75,7 @@ pub struct Server {
     limits: Limits,
     grace: Option<Option<Duration>>,
     trusted_proxies: TrustedProxies,
+    challenge: Option<Arc<dyn ChallengeResponder>>,
     #[cfg(feature = "tls")]
     tls: Option<TlsAcceptor>,
 }
@@ -93,6 +96,7 @@ impl Server {
             limits: Limits::default(),
             grace: None,
             trusted_proxies: TrustedProxies::none(),
+            challenge: None,
             #[cfg(feature = "tls")]
             tls: None,
         }
@@ -138,6 +142,7 @@ impl Server {
             limits: Limits::default(),
             grace: None,
             trusted_proxies: TrustedProxies::none(),
+            challenge: None,
             #[cfg(feature = "tls")]
             tls: None,
         }
@@ -160,6 +165,13 @@ impl Server {
     #[cfg(feature = "tls")]
     pub fn tls(mut self, acceptor: TlsAcceptor) -> Self {
         self.tls = Some(acceptor);
+        self
+    }
+
+    /// Answer the ACME HTTP-01 challenge prefix (`/.well-known/acme-challenge/<token>`) from `responder` before any route, on any adapter and on
+    /// cleartext and TLS listeners alike, see [`ChallengeResponder`]. HTTPAnt does no ACME itself.
+    pub fn acme_challenge(mut self, responder: impl ChallengeResponder) -> Self {
+        self.challenge = Some(Arc::new(responder));
         self
     }
 
@@ -226,6 +238,10 @@ impl Server {
         let opts = ServeOptions::new(listener)
             .limits(limits)
             .trusted_proxies(proxies);
+        let opts = match self.challenge.clone() {
+            Some(responder) => opts.acme_challenge(responder),
+            None => opts,
+        };
         #[cfg(feature = "tls")]
         let opts = match self.tls.clone() {
             None => opts,

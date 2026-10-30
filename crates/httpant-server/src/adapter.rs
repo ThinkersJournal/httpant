@@ -6,7 +6,9 @@ use httpant_core::{BoxFuture, BoxService, Capabilities, Error, Result};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
-use crate::{DEFAULT_SHUTDOWN_GRACE, Grace, Limits, TrustedProxies};
+use std::sync::Arc;
+
+use crate::{ChallengeResponder, DEFAULT_SHUTDOWN_GRACE, Grace, Limits, TrustedProxies};
 
 /// What an adapter is given to serve on.
 #[derive(Debug)]
@@ -19,6 +21,8 @@ pub struct ServeOptions {
     pub limits: Limits,
     /// Peers trusted to say who the client is (default: none), see [`Origin`](crate::Origin).
     pub trusted_proxies: TrustedProxies,
+    /// Answers the ACME HTTP-01 challenge prefix before any route, see [`ChallengeResponder`] (default: none, the prefix is the application's).
+    pub challenge: Option<Arc<dyn ChallengeResponder>>,
     /// Terminate TLS on `listener` with this acceptor (feature `tls`). Adapters whose [`Capabilities::tls`] is not `Yes` are refused before they start.
     #[cfg(feature = "tls")]
     pub tls: Option<crate::TlsAcceptor>,
@@ -32,6 +36,7 @@ impl ServeOptions {
             listener,
             limits: Limits::default(),
             trusted_proxies: TrustedProxies::none(),
+            challenge: None,
             #[cfg(feature = "tls")]
             tls: None,
             grace: Grace::new(Some(DEFAULT_SHUTDOWN_GRACE)),
@@ -47,6 +52,12 @@ impl ServeOptions {
     /// Trust these peers to forward the client's address and scheme (`X-Forwarded-For`, `X-Forwarded-Proto`); nobody is trusted by default.
     pub fn trusted_proxies(mut self, proxies: TrustedProxies) -> Self {
         self.trusted_proxies = proxies;
+        self
+    }
+
+    /// Answer `/.well-known/acme-challenge/<token>` from `responder` before the application's routes.
+    pub fn acme_challenge(mut self, responder: Arc<dyn ChallengeResponder>) -> Self {
+        self.challenge = Some(responder);
         self
     }
 
@@ -77,10 +88,10 @@ impl ServeOptions {
     /// The service an adapter must serve: `svc` behind this server's limits, its shutdown switch and the [`Origin`](crate::Origin) of each request (the adapter must put a [`PeerAddr`](crate::PeerAddr) in the request's extensions first). Every adapter calls this on the service
     /// it is given (conformance cases 14 and 15).
     pub fn wrap(&self, svc: BoxService) -> BoxService {
-        self.grace.wrap(
-            self.limits
-                .wrap(crate::edge::wrap(self.trusted_proxies.clone(), svc)),
-        )
+        self.grace.wrap(self.limits.wrap(crate::challenge::wrap(
+            self.challenge.clone(),
+            crate::edge::wrap(self.trusted_proxies.clone(), svc),
+        )))
     }
 }
 

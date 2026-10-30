@@ -193,12 +193,17 @@ pub(crate) fn wrap(trusted: TrustedProxies, svc: BoxService) -> BoxService {
         let trusted = trusted.clone();
         async move {
             let peer = req.extensions().get::<PeerAddr>().map(|p| p.0);
-            if let Some(mut origin) = origin_of(peer, req.headers(), &trusted) {
+            if let Some(origin) = origin_of(peer, req.headers(), &trusted) {
                 // TLS this server terminated is a fact, not a header: it wins over what any proxy says.
                 #[cfg(feature = "tls")]
-                if req.extensions().get::<crate::TlsConnection>().is_some() {
-                    origin.scheme = Scheme::Https;
-                }
+                let origin = if req.extensions().get::<crate::TlsConnection>().is_some() {
+                    Origin {
+                        scheme: Scheme::Https,
+                        ..origin
+                    }
+                } else {
+                    origin
+                };
                 req.extensions_mut().insert(origin);
             }
             svc.oneshot(req).await.map_err(|e: Infallible| match e {})
