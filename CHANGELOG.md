@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-10-30
+
+- Slice 5: poem adapter (`PoemAdapter`, feature `poem` of `httpant-server`, `Server::with_adapter("poem")`), poem 3.1 with default features off. poem serves the one boxed service as its only endpoint, so routing and error mapping are HTTPAnt's. Request bodies stream through (declared `Content-Length` is the size hint, as on actix); a response body of known length keeps its `Content-Length` (case 12 found the first draft sent every response chunked); unknown length is chunked. Conformance cases 1-12 pass on hyper, axum, actix-web and poem; the matrix gains the row. Not published.
+
 ## [0.1.5] - 2026-10-30
 
 - Slice 4: actix-web adapter (`ActixAdapter`, feature `actix-web` of `httpant-server`, `Server::with_adapter("actix-web")`), actix-web 4.18 with default features off. Option C of `docs/ACTIX-ADAPTER-NOTES.md`: no Tower middleware inside actix and no `actix-tower`. actix's workers run on a thread of their own; the `!Send` request payload is moved chunk by chunk, with back-pressure, into a `Send` body by a pump task on the worker, so nothing is buffered. The declared `Content-Length` is the body's size hint, so an over-limit body is refused on its head (case 5 found the first draft waited for bytes that never came). Conformance cases 1-12 pass on hyper, axum and actix-web; the matrix gains the row. `non-Send handlers` stays `no` (the `LocalHandler` capability is not built). Not published.

@@ -11,13 +11,13 @@ adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`,
 `docs/BENCHMARKS.md`, `docs/ACTIX-ADAPTER-NOTES.md`.
 
 ## State
-- Merged: CI, survey, README known-issues, benchmarks, design, CODEOWNERS/PATENT-SWEEP (#1-#6); slice 1a (#7), 1b (#8), 2a axum (#9), 2b cases 8-12 + matrix (#10), slice 3 client half + SECURITY.md (#11, 0.1.4).
-- **Slice 4 PR open** (branch `feat/actix-adapter`, worktree `C:\Projects\httpant-wt-actix`, 0.1.5 placeholder): actix-web adapter (feature `actix-web`, option C, no actix-tower), cases 1-12 pass on hyper/axum/actix-web. Waiting on CI/gate; check with `gh pr view`.
+- Merged: slices 1a-4 (#7-#12; 4 = actix-web adapter, 0.1.5). Option C for actix (no actix-tower).
+- **Slice 5 PR open** (branch `feat/poem-adapter`, worktree `C:\Projects\httpant-wt-salvo` - the dir name is a misnomer, it holds poem; 0.1.6 placeholder): poem adapter, cases 1-12 pass on hyper/axum/actix-web/poem. Check with `gh pr view`.
 - **Option A (Tower core, thin adapters) is PROVISIONAL**: PM told me to proceed 2026-10-29 while CireSnave decides A/B/C.
 - Trailing slash rule: no normalisation (decided, design section 3).
 
 ## Next (in order)
-1. After the actix PR merges: remove its worktree + branch (CLAUDE.md section 3). Then salvo, poem, rocket, warp one at a time, only if they pass the suite.
+1. After the poem PR merges: remove its worktree + branch (CLAUDE.md section 3). Then salvo 1.0.1 (own Request/Response types; not yet read), rocket, warp, one at a time, only if they pass.
    Read ConfigurAnt's API before wiring settings (design section 10; UNVERIFIED).
 2. Open design points: percent-decoding of path params (raw today), request header/body limits in `ServeOptions`, Path/Query extractors,
    a shutdown grace period, a mutant for `Connection: close` / `Expect: 100-continue`, `LocalHandler` capability for actix, TLS acceptor hook.

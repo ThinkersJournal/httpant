@@ -8,6 +8,8 @@ mod adapter;
 #[cfg(feature = "axum")]
 mod axum_adapter;
 mod hyper_adapter;
+#[cfg(feature = "poem")]
+mod poem_adapter;
 
 use std::sync::Arc;
 
@@ -20,6 +22,8 @@ pub use httpant_core as core;
 use httpant_core::http::Method;
 use httpant_core::{BoxService, Error, Handler, LayerFn, Result, Router, apply_layers, layer_fn};
 pub use hyper_adapter::HyperAdapter;
+#[cfg(feature = "poem")]
+pub use poem_adapter::PoemAdapter;
 use tokio::net::ToSocketAddrs;
 
 /// The ids of the adapters compiled into this build.
@@ -29,6 +33,8 @@ pub const ADAPTER_IDS: &[&str] = &[
     "axum",
     #[cfg(feature = "actix-web")]
     "actix-web",
+    #[cfg(feature = "poem")]
+    "poem",
 ];
 
 /// Describes routes and layers once, then runs them on an adapter chosen by id (default `hyper`).
@@ -66,6 +72,10 @@ impl Server {
             "actix-web" => Ok(Self::with_adapter_impl(ActixAdapter)),
             #[cfg(not(feature = "actix-web"))]
             "actix-web" => Err(Error::AdapterNotCompiledIn { id: id.to_owned() }),
+            #[cfg(feature = "poem")]
+            "poem" => Ok(Self::with_adapter_impl(PoemAdapter)),
+            #[cfg(not(feature = "poem"))]
+            "poem" => Err(Error::AdapterNotCompiledIn { id: id.to_owned() }),
             _ => Err(Error::UnknownAdapter {
                 id: id.to_owned(),
                 available: ADAPTER_IDS.to_vec(),
