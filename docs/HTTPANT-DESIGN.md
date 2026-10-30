@@ -174,8 +174,9 @@ pub trait TlsAcceptor: Send + Sync + 'static {   // given an accepted TCP stream
 
 `ServeOptions::tls(Arc<dyn TlsAcceptor>)`; an adapter that cannot take a pre-built acceptor declares `tls: false` in `Capabilities` and the server refuses to
 start with one (never serves cleartext when TLS was asked for). Certificate reload without restart is a separate declared capability (`tls-reload`) because the
-acceptor can swap its config internally. The default acceptor implementation (rustls) lives in WebHostAnt or an opt-in feature, not in core. UNVERIFIED: which of the
-frameworks accept an externally built acceptor versus requiring their own TLS config types (axum/hyper do via hyper-util serving a stream, UNVERIFIED for the rest).
+acceptor can swap its config internally. The default acceptor implementation (rustls) lives in WebHostAnt or an opt-in feature, not in core. Probed 2026-10-30
+(`docs/TLS-ADAPTER-PROBES.md`): hyper, axum, poem and salvo accept an externally built acceptor (case 17 proves it); warp (private `Accept` trait)
+and actix-web (only its own `rustls::ServerConfig`) do not, and are edge mode only.
 
 ## 8. What each adapter can NOT do
 

@@ -38,8 +38,12 @@ impl ServerAdapter for SalvoAdapter {
         c.graceful_shutdown = Support::Yes;
         // Not measurable by this suite: a handler that is not `Send` cannot be written against the `Send` service contract.
         c.local_handlers = Support::No;
-        // HTTPAnt terminates TLS below the adapters only where the web library accepts an already-handshaken stream; this one is edge mode only.
-        c.tls = Support::No;
+        // salvo takes any `Acceptor`, so HTTPAnt wraps its own TLS handshake around the TCP one (`salvo_tls.rs`); proved by case 17.
+        c.tls = if cfg!(feature = "tls") {
+            Support::Yes
+        } else {
+            Support::No
+        };
         c
     }
 
@@ -52,37 +56,57 @@ impl ServerAdapter for SalvoAdapter {
             let acceptor = TcpAcceptor::try_from(TcpListener::from_std(opts.listener)?)?;
             let (close, closed) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
             let acceptor = Closable::new(acceptor, Arc::clone(&close), Arc::clone(&closed));
-            let in_flight = Arc::new(InFlight::default());
-            let goal = Goal {
-                svc: Arc::new(Mutex::new(svc)),
-                in_flight: Arc::clone(&in_flight),
-            };
-            let router = Router::with_path("{**rest}").goal(goal);
-            let server = Server::new(acceptor);
-            let handle = server.handle();
-            let (stop, stopped) = oneshot::channel::<()>();
-            // salvo runs as a task of its own: it has to keep being polled while shutdown waits for the listener to close.
-            let mut serving = tokio::spawn(server.serve(Service::new(router)));
-            let task = tokio::spawn(async move {
-                tokio::select! {
-                    _ = &mut serving => {}
-                    _ = stopped => {
-                        // Graceful: stop accepting, finish requests in flight, close idle connections, then return.
-                        // salvo keeps the listening socket open until it has drained, so a client could still connect meanwhile; it also
-                        // drops its pending accept when the stop command arrives and never polls the acceptor again. So close the
-                        // listener first and wait to see it closed; the time limit only keeps a wedged accept loop from hanging shutdown.
-                        close.notify_one();
-                        let _ = tokio::time::timeout(Duration::from_secs(2), closed.notified()).await;
-                        handle.stop_graceful(None);
-                        let _ = serving.await;
-                        // salvo's own wait counts connections; the contract counts requests, so wait for those too.
-                        in_flight.drained().await;
-                    }
-                }
-            });
-            Ok(RunningServer::new(addr, stop, task, grace))
+            #[cfg(feature = "tls")]
+            if let Some(tls) = opts.tls.clone() {
+                let acceptor = crate::salvo_tls::TlsSalvoAcceptor::new(acceptor, tls);
+                return Ok(run(acceptor, svc, close, closed, addr, grace));
+            }
+            Ok(run(acceptor, svc, close, closed, addr, grace))
         })
     }
+}
+
+/// Serve `svc` on `acceptor` with salvo, and give back the handle that stops it gracefully.
+fn run<A>(
+    acceptor: A,
+    svc: BoxService,
+    close: Arc<Notify>,
+    closed: Arc<Notify>,
+    addr: std::net::SocketAddr,
+    grace: crate::Grace,
+) -> RunningServer
+where
+    A: Acceptor + Send + 'static,
+{
+    let in_flight = Arc::new(InFlight::default());
+    let goal = Goal {
+        svc: Arc::new(Mutex::new(svc)),
+        in_flight: Arc::clone(&in_flight),
+    };
+    let router = Router::with_path("{**rest}").goal(goal);
+    let server = Server::new(acceptor);
+    let handle = server.handle();
+    let (stop, stopped) = oneshot::channel::<()>();
+    // salvo runs as a task of its own: it has to keep being polled while shutdown waits for the listener to close.
+    let mut serving = tokio::spawn(server.serve(Service::new(router)));
+    let task = tokio::spawn(async move {
+        tokio::select! {
+            _ = &mut serving => {}
+            _ = stopped => {
+                // Graceful: stop accepting, finish requests in flight, close idle connections, then return.
+                // salvo keeps the listening socket open until it has drained, so a client could still connect meanwhile; it also
+                // drops its pending accept when the stop command arrives and never polls the acceptor again. So close the
+                // listener first and wait to see it closed; the time limit only keeps a wedged accept loop from hanging shutdown.
+                close.notify_one();
+                let _ = tokio::time::timeout(Duration::from_secs(2), closed.notified()).await;
+                handle.stop_graceful(None);
+                let _ = serving.await;
+                // salvo's own wait counts connections; the contract counts requests, so wait for those too.
+                in_flight.drained().await;
+            }
+        }
+    });
+    RunningServer::new(addr, stop, task, grace)
 }
 
 /// The boxed service is `Send` only and salvo wants `Sync`: a mutex held just long enough to clone it.
@@ -150,6 +174,8 @@ impl Handler for Goal {
         for (name, value) in req.headers() {
             builder = builder.header(name, value);
         }
+        #[cfg(feature = "tls")]
+        let over_tls = *req.scheme() == salvo_core::http::uri::Scheme::HTTPS;
         let remote = req.remote_addr();
         let peer = remote
             .as_ipv4()
@@ -166,6 +192,10 @@ impl Handler for Goal {
         let mut request: Request = request;
         if let Some(peer) = peer {
             request.extensions_mut().insert(crate::PeerAddr(peer));
+        }
+        #[cfg(feature = "tls")]
+        if over_tls {
+            request.extensions_mut().insert(crate::TlsConnection);
         }
         let out = svc
             .oneshot(request)
