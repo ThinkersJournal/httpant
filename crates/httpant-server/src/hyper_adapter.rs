@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 use httpant_core::{Body, BoxFuture, BoxService, Capabilities, Request, Result, Support};
+#[cfg(not(feature = "http2"))]
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
@@ -33,6 +34,12 @@ impl ServerAdapter for HyperAdapter {
         } else {
             Support::No
         };
+        // HTTP/2 is offered on TLS listeners only (ALPN `h2`); proved by conformance case 18. Cleartext stays HTTP/1.1.
+        c.http2 = if cfg!(all(feature = "tls", feature = "http2")) {
+            Support::Yes
+        } else {
+            Support::No
+        };
         c
     }
 
@@ -45,6 +52,9 @@ impl ServerAdapter for HyperAdapter {
             let listener = TcpListener::from_std(opts.listener)?;
             #[cfg(feature = "tls")]
             let tls = opts.tls.clone();
+            // This adapter serves HTTP/2, so its TLS listener offers it (first), HTTP/1.1 after.
+            #[cfg(all(feature = "tls", feature = "http2"))]
+            let tls = tls.map(|t| t.alpn_protocols(&[b"h2", b"http/1.1"]));
             let (stop, mut stopped) = oneshot::channel::<()>();
             let task = tokio::spawn(async move {
                 let (drain, draining) = watch::channel(false);
@@ -102,7 +112,21 @@ async fn serve_conn<I>(
         svc.clone().oneshot(req)
     });
     // A connection that errors (peer reset, malformed request) ends only that connection.
+    #[cfg(not(feature = "http2"))]
     let conn = http1::Builder::new().serve_connection(TokioIo::new(io), service);
+    // HTTP/2 only where TLS negotiated it: a cleartext listener is HTTP/1.1, as before (no h2c by prior knowledge).
+    #[cfg(feature = "http2")]
+    let builder = {
+        let builder =
+            hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+        if over_tls {
+            builder
+        } else {
+            builder.http1_only()
+        }
+    };
+    #[cfg(feature = "http2")]
+    let conn = builder.serve_connection(TokioIo::new(io), service);
     tokio::pin!(conn);
     tokio::select! {
         _ = conn.as_mut() => {}

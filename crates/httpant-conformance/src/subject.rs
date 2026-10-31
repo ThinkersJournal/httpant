@@ -141,6 +141,10 @@ impl Subject for MutantSubject {
             Mutant::IgnoreTrustedProxies => setup.trusted_proxies = TrustedProxies::none(),
             // Asked for TLS, serves cleartext.
             Mutant::ServeTlsInClear => setup.tls = None,
+            // Offers `h2`, in front of the salvo adapter, which speaks HTTP/1.1 only.
+            Mutant::OffersH2WithoutServingIt => {
+                setup.tls = setup.tls.map(|t| t.alpn_protocols(&[b"h2", b"http/1.1"]));
+            }
             _ => {}
         }
         Box::pin(async move {
@@ -152,6 +156,14 @@ impl Subject for MutantSubject {
             let svc = mutants::apply(self.0, svc);
             if self.0 == Mutant::AbortOnShutdown {
                 return mutants::serve_aborting(svc, free_listener()?);
+            }
+            if self.0 == Mutant::OffersH2WithoutServingIt {
+                return SalvoAdapter
+                    .serve(
+                        svc,
+                        options(free_listener()?, setup).limits(self.0.limits()),
+                    )
+                    .await;
             }
             HyperAdapter
                 .serve(

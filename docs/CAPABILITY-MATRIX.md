@@ -6,14 +6,14 @@ rewrites it. Each adapter's `capabilities()` is compared with the measurement by
 `yes` that the suite cannot reproduce fails the build.
 
 <!-- matrix:start -->
-| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | terminates TLS | default body limit (bytes) |
-|---|---|---|---|---|---|---|
-| hyper | yes | yes | yes | no | yes | 2097152 |
-| axum | yes | yes | yes | no | yes | 2097152 |
-| actix-web | yes | yes | yes | no | no | 2097152 |
-| poem | yes | yes | yes | no | yes | 2097152 |
-| salvo | yes | yes | yes | no | yes | 2097152 |
-| warp | yes | yes | yes | no | no | 2097152 |
+| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | terminates TLS | HTTP/2 (over TLS) | default body limit (bytes) |
+|---|---|---|---|---|---|---|---|
+| hyper | yes | yes | yes | no | yes | yes | 2097152 |
+| axum | yes | yes | yes | no | yes | yes | 2097152 |
+| actix-web | yes | yes | yes | no | no | no | 2097152 |
+| poem | yes | yes | yes | no | yes | yes | 2097152 |
+| salvo | yes | yes | yes | no | yes | no | 2097152 |
+| warp | yes | yes | yes | no | no | no | 2097152 |
 <!-- matrix:end -->
 
 Client adapters, measured by the client cases against a raw-TCP peer (`client_suite.rs`):
@@ -36,6 +36,11 @@ Client adapters, measured by the client cases against a raw-TCP peer (`client_su
   `Accept` trait is private (run: it does not compile from outside), and actix-web, run as a spike (`spike/actix-tls`), can be bridged only by
   blocking its single-threaded worker while the certificate source answers (a fast handshake took 2035 ms behind six slow ones, against 7 ms
   on hyper and axum) and without HTTPAnt's audit events, so both stay edge mode only.
+- *HTTP/2 (over TLS)*: declared (needs the `http2` feature of `httpant-server`), and held to its declaration by case 18. A TLS listener
+  offers `h2` only if the adapter serves it. For `yes` the case proves a client offering `h2` and `http/1.1` is given `h2` and answered over
+  HTTP/2 with the request reported as `https`; for `no` (with TLS `yes`: salvo) it proves the client is given `http/1.1`, never an `h2` the
+  adapter cannot serve. Cleartext HTTP/2 (h2c) is **not** part of the column and is not uniform: hyper refuses the prior-knowledge preface on
+  a cleartext listener, while axum's and poem's own builders accept it (see ROADMAP).
 - *non-`Send` handlers*: declared, not measured. The service contract is `Send`; actix-web (thread-per-core, `!Send` handlers) is the adapter this
   column is for (`docs/ACTIX-ADAPTER-NOTES.md`).
 - Cases 10 (keep-alive, `Connection: close`, `Expect: 100-continue`), 11 (concurrency) and 12 (HEAD) are required of every adapter; they have no

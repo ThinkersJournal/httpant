@@ -39,6 +39,12 @@ impl ServerAdapter for PoemAdapter {
         } else {
             Support::No
         };
+        // HTTP/2 is offered on TLS listeners only (ALPN `h2`); its connection builder serves it. Proved by conformance case 18.
+        c.http2 = if cfg!(all(feature = "tls", feature = "http2")) {
+            Support::Yes
+        } else {
+            Support::No
+        };
         c
     }
 
@@ -61,6 +67,8 @@ impl ServerAdapter for PoemAdapter {
             let (stop, stopped) = oneshot::channel::<()>();
             #[cfg(feature = "tls")]
             if let Some(tls) = opts.tls.clone() {
+                #[cfg(feature = "http2")]
+                let tls = tls.alpn_protocols(&[b"h2", b"http/1.1"]);
                 let acceptor = crate::poem_tls::TlsPoemAcceptor::new(acceptor, tls);
                 let task = tokio::spawn(async move {
                     let _ = poem::Server::new_with_acceptor(acceptor)

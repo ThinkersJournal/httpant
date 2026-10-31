@@ -13,6 +13,7 @@ axum = ["dep:axum"]
 actix-web = ["dep:actix-web", "dep:futures-util", "dep:http-body-util"]
 salvo = ["dep:salvo_core", "dep:futures-util", "dep:http-body-util"]
 warp = ["dep:warp", "dep:bytes", "dep:futures-util", "dep:http-body-util"]
+http2 = ["hyper/http2", "hyper-util/http2", "hyper-util/server-auto"]
 tls = ["dep:rustls", "dep:tokio-rustls", "dep:x509-parser"]
 poem = ["dep:poem", "dep:futures-util", "dep:http-body-util"]
 
@@ -41,6 +42,8 @@ futures-util.workspace = true
 http-body-util.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }
 rcgen.workspace = true
+hyper = { workspace = true, features = ["client", "http2"] }
+hyper-util = { workspace = true, features = ["tokio"] }
 rustls.workspace = true
 tokio-rustls.workspace = true
 

@@ -33,6 +33,12 @@ impl ServerAdapter for AxumAdapter {
         } else {
             Support::No
         };
+        // HTTP/2 is offered on TLS listeners only (ALPN `h2`); its connection builder serves it. Proved by conformance case 18.
+        c.http2 = if cfg!(all(feature = "tls", feature = "http2")) {
+            Support::Yes
+        } else {
+            Support::No
+        };
         c
     }
 
@@ -80,6 +86,8 @@ impl ServerAdapter for AxumAdapter {
             let (stop, stopped) = oneshot::channel::<()>();
             #[cfg(feature = "tls")]
             if let Some(acceptor) = opts.tls.clone() {
+                #[cfg(feature = "http2")]
+                let acceptor = acceptor.alpn_protocols(&[b"h2", b"http/1.1"]);
                 let listener = crate::tls_listener::TlsListener::new(listener, acceptor);
                 let task = tokio::spawn(async move {
                     let _ = axum::serve(

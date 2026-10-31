@@ -346,7 +346,13 @@ async fn read_back_reports_the_certificate_the_listener_really_serves() {
             .unwrap()
             .as_secs() as i64;
         assert!(first.not_before <= now && first.not_after > now, "{id}");
-        assert_eq!(first.alpn.as_deref(), Some("http/1.1"), "{id}");
+        // The probe offers `h2` and `http/1.1`; an adapter that serves HTTP/2 (with the `http2` feature) is read back as `h2`, salvo as `http/1.1`.
+        let expected = if cfg!(feature = "http2") && *id != "salvo" {
+            "h2"
+        } else {
+            "http/1.1"
+        };
+        assert_eq!(first.alpn.as_deref(), Some(expected), "{id}");
         assert!(
             first.protocol.contains("TLSv1_3") || first.protocol.contains("1.3"),
             "{id}: {}",

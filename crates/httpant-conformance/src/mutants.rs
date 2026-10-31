@@ -62,6 +62,8 @@ pub enum Mutant {
     DecodeBeforeRouting,
     /// TLS was asked for and the listener serves cleartext HTTP.
     ServeTlsInClear,
+    /// The TLS listener offers `h2` in front of a server that speaks only HTTP/1.1.
+    OffersH2WithoutServingIt,
 }
 
 impl Mutant {
@@ -105,6 +107,7 @@ impl Mutant {
             Mutant::NoHeaderBytesLimit => "no-header-bytes-limit",
             Mutant::NoBodyLimit => "no-body-limit",
             Mutant::ServeTlsInClear => "serve-tls-in-clear",
+            Mutant::OffersH2WithoutServingIt => "offers-h2-without-serving-it",
         }
     }
 }
@@ -124,7 +127,8 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         | Mutant::NoHeaderCountLimit
         | Mutant::NoHeaderBytesLimit
         | Mutant::NoBodyLimit
-        | Mutant::ServeTlsInClear => return svc,
+        | Mutant::ServeTlsInClear
+        | Mutant::OffersH2WithoutServingIt => return svc,
         Mutant::FoldMethodToGet => fold_method_to_get,
         Mutant::ClampStatus => clamp_status,
         Mutant::HashMapHeaders => hashmap_headers,

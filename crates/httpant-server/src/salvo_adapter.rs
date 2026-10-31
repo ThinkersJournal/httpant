@@ -44,6 +44,8 @@ impl ServerAdapter for SalvoAdapter {
         } else {
             Support::No
         };
+        // These adapters serve HTTP/1.1 only until their HTTP/2 slice; they never offer `h2` (conformance case 18).
+        c.http2 = Support::No;
         c
     }
 
