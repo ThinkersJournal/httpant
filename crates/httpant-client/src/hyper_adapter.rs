@@ -91,26 +91,6 @@ impl HyperClientAdapter {
         })
     }
 
-    /// A client with the TLS configuration you give it. **Not part of the API:** it exists so the conformance suite can build clients with a
-    /// deliberately broken certificate check (the mutants) and show that the suite catches them.
-    #[cfg(feature = "https")]
-    #[doc(hidden)]
-    pub fn with_tls_config_for_conformance(config: rustls::ClientConfig) -> Self {
-        let mut http = HttpConnector::new();
-        http.set_connect_timeout(Some(DEFAULT_CONNECT_TIMEOUT));
-        http.enforce_http(false);
-        let connector = hyper_rustls::HttpsConnectorBuilder::new()
-            .with_tls_config(config)
-            .https_or_http()
-            .enable_http1()
-            .wrap_connector(http);
-        Self {
-            client: Client::builder(TokioExecutor::new()).build(connector),
-            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
-            read_timeout: DEFAULT_READ_TIMEOUT,
-        }
-    }
-
     /// What went wrong, said so that it ends with what to do. Never includes the URL, and so never a query string.
     fn map_error(&self, e: hyper_util::client::legacy::Error) -> Error {
         self.classify(&e)

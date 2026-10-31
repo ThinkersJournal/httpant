@@ -248,12 +248,58 @@ impl ClientSubject for ClientMutantSubject {
         match self.0 {
             ClientMutant::AcceptAnyCertificate | ClientMutant::IgnoreHostName => {
                 let config = lenient_tls_config(self.0, root_pem).ok()?;
-                Some(Client::with_adapter_impl(
-                    HyperClientAdapter::with_tls_config_for_conformance(config),
-                ))
+                Some(Client::with_adapter_impl(LenientTlsAdapter::new(config)))
             }
             _ => None,
         }
+    }
+}
+
+/// A client adapter built here, in the unpublished conformance crate, with its own rustls connector and a deliberately lenient certificate
+/// check. The published client has no way to be given a rustls configuration, so no consumer can build this.
+struct LenientTlsAdapter {
+    client: hyper_util::client::legacy::Client<
+        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+        Body,
+    >,
+}
+
+impl LenientTlsAdapter {
+    fn new(config: rustls::ClientConfig) -> Self {
+        let mut http = hyper_util::client::legacy::connect::HttpConnector::new();
+        http.enforce_http(false);
+        let connector = hyper_rustls::HttpsConnectorBuilder::new()
+            .with_tls_config(config)
+            .https_or_http()
+            .enable_http1()
+            .wrap_connector(http);
+        Self {
+            client: hyper_util::client::legacy::Client::builder(
+                hyper_util::rt::TokioExecutor::new(),
+            )
+            .build(connector),
+        }
+    }
+}
+
+impl ClientAdapter for LenientTlsAdapter {
+    fn id(&self) -> &'static str {
+        "hyper-lenient-tls-mutant"
+    }
+
+    fn capabilities(&self) -> ClientCapabilities {
+        HyperClientAdapter::new().capabilities()
+    }
+
+    fn send(&self, req: Request) -> BoxFuture<'_, CoreResult<Response>> {
+        Box::pin(async move {
+            let res = self
+                .client
+                .request(req)
+                .await
+                .map_err(|e| Error::Request(Box::new(e)))?;
+            Ok(res.map(Body::new))
+        })
     }
 }
 

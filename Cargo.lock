@@ -789,6 +789,7 @@ dependencies = [
  "httpant-core",
  "httpant-server",
  "hyper",
+ "hyper-rustls",
  "hyper-util",
  "rcgen",
  "rustls",

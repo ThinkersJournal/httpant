@@ -19,7 +19,8 @@ futures-util.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
 hyper = { workspace = true, features = ["server", "http1", "client", "http2"] }
-hyper-util = { workspace = true, features = ["tokio"] }
+hyper-util = { workspace = true, features = ["tokio", "client-legacy", "http1"] }
+hyper-rustls.workspace = true
 rustls.workspace = true
 tokio-rustls.workspace = true
 rcgen.workspace = true
