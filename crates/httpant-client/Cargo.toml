@@ -11,8 +11,17 @@ keywords = ["http", "client", "hyper", "abstraction"]
 categories = ["web-programming::http-client", "network-programming"]
 description = "HTTPAnt client half: the Client builder, the ClientAdapter trait and the hyper-util reference adapter"
 
+[features]
+# https:// URLs: rustls (ring) with the bundled Mozilla roots. Off by default; without it an https URL is an error that names this feature.
+https = ["dep:hyper-rustls", "dep:rustls", "dep:webpki-roots"]
+
 [dependencies]
 httpant-core.workspace = true
+bytes.workspace = true
+http-body.workspace = true
+hyper-rustls = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
+webpki-roots = { workspace = true, optional = true }
 hyper = { workspace = true, features = ["client", "http1"] }
 hyper-util = { workspace = true, features = ["client-legacy", "http1", "tokio"] }
 tokio = { workspace = true, features = ["time"] }

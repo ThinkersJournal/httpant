@@ -40,9 +40,9 @@ pub enum Error {
         id: String,
     },
     /// A client request URL that is not usable.
-    #[error("invalid URL `{url}`: {reason}; use an absolute http:// URL")]
+    #[error("invalid URL `{url}`: {reason}; use an absolute http:// or https:// URL")]
     InvalidUrl {
-        /// The URL as given.
+        /// The URL as given, without any user name, password, query or fragment (those can carry secrets and never appear in an error).
         url: String,
         /// What is wrong with it.
         reason: &'static str,
@@ -55,9 +55,9 @@ pub enum Error {
         /// The header name as given (lossy for non-UTF8 bytes).
         name: String,
     },
-    /// A client request for a scheme the chosen client adapter does not do (https until the TLS hook exists).
+    /// A client request for a scheme the chosen client adapter does not do.
     #[error(
-        "scheme `{scheme}` is not supported by the `{adapter}` client adapter: use http:// or another adapter"
+        "scheme `{scheme}` is not supported by the `{adapter}` client adapter: use http:// or https://"
     )]
     UnsupportedScheme {
         /// The scheme asked for.
@@ -73,12 +73,33 @@ pub enum Error {
         /// The adapter id.
         adapter: &'static str,
     },
+    /// A client request for a scheme that exists but whose cargo feature is off.
+    #[error("scheme `{scheme}` is not compiled in: enable the `{feature}` feature")]
+    SchemeNotCompiledIn {
+        /// The scheme asked for.
+        scheme: String,
+        /// The cargo feature that provides it.
+        feature: &'static str,
+    },
+    /// A client's TLS handshake failed (an untrusted or expired certificate, a name that does not match, a peer that does not speak TLS).
+    #[error(
+        "TLS handshake failed: {0}; check the host name and that its certificate is trusted and not expired (add_root_pem trusts a private CA)"
+    )]
+    TlsHandshake(String),
     /// TLS is configured wrongly (bad certificate or key, or the `tls` feature is off).
     #[error("TLS configuration: {0}")]
     Tls(String),
-    /// A client request did not finish before its timeout.
+    /// A client request did not get a response head before its timeout.
     #[error("request timed out after {0:?}: raise the timeout or check the peer")]
     Timeout(std::time::Duration),
+    /// A client could not connect before the connect timeout.
+    #[error(
+        "connecting timed out after {0:?}: raise the connect timeout or check the address and the network"
+    )]
+    ConnectTimeout(std::time::Duration),
+    /// A response body went quiet for longer than the read timeout.
+    #[error("the response went quiet for {0:?}: raise the read timeout or check the peer")]
+    ReadTimeout(std::time::Duration),
     /// A client request failed in the transport (connect, send, receive).
     #[error("request failed: {0}; check the address and that the peer is up")]
     Request(BoxError),
@@ -96,10 +117,13 @@ impl Error {
             | Error::InvalidUrl { .. }
             | Error::InvalidHeader { .. }
             | Error::UnsupportedScheme { .. }
+            | Error::SchemeNotCompiledIn { .. }
             | Error::TlsNotSupported { .. }
             | Error::Tls(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Error::Timeout(_) => StatusCode::GATEWAY_TIMEOUT,
-            Error::Request(_) => StatusCode::BAD_GATEWAY,
+            Error::Timeout(_) | Error::ConnectTimeout(_) | Error::ReadTimeout(_) => {
+                StatusCode::GATEWAY_TIMEOUT
+            }
+            Error::Request(_) | Error::TlsHandshake(_) => StatusCode::BAD_GATEWAY,
         }
     }
 }

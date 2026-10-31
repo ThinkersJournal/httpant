@@ -24,8 +24,8 @@ use httpant_core::BoxFuture;
 
 pub use client_suite::{
     CLIENT_CASES, ClientAdapterSubject, ClientCase, ClientMeasured, ClientMutant,
-    ClientMutantSubject, ClientSubject, check_client_case, client_adapters, client_reference,
-    measure_client, run_client_suite,
+    ClientMutantSubject, ClientSubject, HyperClientSubject, check_client_case, client_adapters,
+    client_reference, measure_client, run_client_suite,
 };
 pub use live::{Measured, measure};
 pub use mutants::Mutant;
@@ -347,6 +347,8 @@ mod tests {
             ClientMutant::BufferResponseBody,
             ClientMutant::BufferRequestBody,
             ClientMutant::NoConnectionReuse,
+            ClientMutant::AcceptAnyCertificate,
+            ClientMutant::IgnoreHostName,
         ];
         for m in all {
             let users = CLIENT_CASES
@@ -381,6 +383,7 @@ mod tests {
     client_case_test!(client_case_5_streaming_response, 4);
     client_case_test!(client_case_6_streaming_request, 5);
     client_case_test!(client_case_7_connection_reuse, 6);
+    client_case_test!(client_case_8_https, 7);
 
     #[tokio::test]
     async fn the_whole_client_suite_passes_on_every_client_adapter() {
@@ -404,13 +407,15 @@ mod tests {
                     declared.streaming_request_bodies,
                     declared.streaming_response_bodies,
                     declared.connection_reuse,
-                    declared.follows_redirects
+                    declared.follows_redirects,
+                    declared.tls
                 ),
                 (
                     m.streaming_request_bodies,
                     m.streaming_response_bodies,
                     m.connection_reuse,
-                    m.follows_redirects
+                    m.follows_redirects,
+                    m.tls
                 ),
                 "{}: declared client capabilities differ from what the suite measured",
                 subject.name()
@@ -488,7 +493,7 @@ mod tests {
                 cell(m.streaming_response_bodies),
                 cell(m.connection_reuse),
                 cell(m.follows_redirects),
-                cell(declared.tls),
+                cell(m.tls),
                 declared.default_body_limit,
             ));
         }

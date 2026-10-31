@@ -8,6 +8,7 @@
 
 use std::convert::Infallible;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -19,9 +20,15 @@ use httpant_core::http::{HeaderMap, Method};
 use httpant_core::{
     Body, BoxFuture, ClientCapabilities, Error, Request, Response, Result as CoreResult, Support,
 };
+use rustls::client::WebPkiServerVerifier;
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::pki_types::pem::PemObject;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
+use rustls::{CertificateError, DigitallySignedStruct, SignatureScheme};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, oneshot};
+use tokio_rustls::TlsAcceptor;
 
 type Outcome = Result<(), String>;
 
@@ -53,6 +60,10 @@ pub enum ClientMutant {
     BufferRequestBody,
     /// Every request says `Connection: close`, so no connection is reused.
     NoConnectionReuse,
+    /// https: any certificate is accepted, trusted or not.
+    AcceptAnyCertificate,
+    /// https: the chain is checked against the roots, but the host name is not compared with the certificate.
+    IgnoreHostName,
 }
 
 impl ClientMutant {
@@ -66,6 +77,8 @@ impl ClientMutant {
             ClientMutant::BufferResponseBody => "client-buffer-response-body",
             ClientMutant::BufferRequestBody => "client-buffer-request-body",
             ClientMutant::NoConnectionReuse => "client-no-connection-reuse",
+            ClientMutant::AcceptAnyCertificate => "client-accept-any-certificate",
+            ClientMutant::IgnoreHostName => "client-ignore-host-name",
         }
     }
 }
@@ -170,6 +183,33 @@ pub trait ClientSubject: Send + Sync {
     fn declared(&self) -> Option<ClientCapabilities> {
         None
     }
+
+    /// A client on this subject that also trusts the CA certificate(s) in `root_pem`, for the https case. `None` if the subject cannot be told
+    /// to trust a root (then https cannot be measured on it, and the case fails rather than skips).
+    fn client_trusting(&self, _root_pem: &[u8]) -> Option<Client> {
+        None
+    }
+}
+
+/// The reference client adapter as a subject: it can be told to trust a root.
+pub struct HyperClientSubject;
+
+impl ClientSubject for HyperClientSubject {
+    fn name(&self) -> String {
+        "hyper".to_owned()
+    }
+
+    fn client(&self) -> Client {
+        Client::new()
+    }
+
+    fn declared(&self) -> Option<ClientCapabilities> {
+        Some(HyperClientAdapter::new().capabilities())
+    }
+
+    fn client_trusting(&self, root_pem: &[u8]) -> Option<Client> {
+        Client::builder().add_root_pem(root_pem).build().ok()
+    }
 }
 
 /// A real client adapter, used exactly as `Client` uses it.
@@ -203,16 +243,155 @@ impl ClientSubject for ClientMutantSubject {
             mutant: self.0,
         })
     }
+
+    fn client_trusting(&self, root_pem: &[u8]) -> Option<Client> {
+        match self.0 {
+            ClientMutant::AcceptAnyCertificate | ClientMutant::IgnoreHostName => {
+                let config = lenient_tls_config(self.0, root_pem).ok()?;
+                Some(Client::with_adapter_impl(LenientTlsAdapter::new(config)))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// A client adapter built here, in the unpublished conformance crate, with its own rustls connector and a deliberately lenient certificate
+/// check. The published client has no way to be given a rustls configuration, so no consumer can build this.
+struct LenientTlsAdapter {
+    client: hyper_util::client::legacy::Client<
+        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+        Body,
+    >,
+}
+
+impl LenientTlsAdapter {
+    fn new(config: rustls::ClientConfig) -> Self {
+        let mut http = hyper_util::client::legacy::connect::HttpConnector::new();
+        http.enforce_http(false);
+        let connector = hyper_rustls::HttpsConnectorBuilder::new()
+            .with_tls_config(config)
+            .https_or_http()
+            .enable_http1()
+            .wrap_connector(http);
+        Self {
+            client: hyper_util::client::legacy::Client::builder(
+                hyper_util::rt::TokioExecutor::new(),
+            )
+            .build(connector),
+        }
+    }
+}
+
+impl ClientAdapter for LenientTlsAdapter {
+    fn id(&self) -> &'static str {
+        "hyper-lenient-tls-mutant"
+    }
+
+    fn capabilities(&self) -> ClientCapabilities {
+        HyperClientAdapter::new().capabilities()
+    }
+
+    fn send(&self, req: Request) -> BoxFuture<'_, CoreResult<Response>> {
+        Box::pin(async move {
+            let res = self
+                .client
+                .request(req)
+                .await
+                .map_err(|e| Error::Request(Box::new(e)))?;
+            Ok(res.map(Body::new))
+        })
+    }
+}
+
+/// A certificate check with one defect: the chain is verified against `root_pem` by the real verifier, then the defect is applied.
+#[derive(Debug)]
+struct LenientVerifier {
+    inner: Arc<WebPkiServerVerifier>,
+    mutant: ClientMutant,
+}
+
+impl ServerCertVerifier for LenientVerifier {
+    fn verify_server_cert(
+        &self,
+        end_entity: &CertificateDer<'_>,
+        intermediates: &[CertificateDer<'_>],
+        server_name: &ServerName<'_>,
+        ocsp_response: &[u8],
+        now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        let checked = self.inner.verify_server_cert(
+            end_entity,
+            intermediates,
+            server_name,
+            ocsp_response,
+            now,
+        );
+        match (self.mutant, checked) {
+            (ClientMutant::AcceptAnyCertificate, _) => Ok(ServerCertVerified::assertion()),
+            (
+                ClientMutant::IgnoreHostName,
+                Err(rustls::Error::InvalidCertificate(
+                    CertificateError::NotValidForName
+                    | CertificateError::NotValidForNameContext { .. },
+                )),
+            ) => Ok(ServerCertVerified::assertion()),
+            (_, other) => other,
+        }
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.inner.verify_tls12_signature(message, cert, dss)
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        message: &[u8],
+        cert: &CertificateDer<'_>,
+        dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        self.inner.verify_tls13_signature(message, cert, dss)
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        self.inner.supported_verify_schemes()
+    }
+}
+
+fn lenient_tls_config(
+    mutant: ClientMutant,
+    root_pem: &[u8],
+) -> Result<rustls::ClientConfig, String> {
+    let provider = Arc::new(rustls::crypto::ring::default_provider());
+    let mut roots = rustls::RootCertStore::empty();
+    for cert in CertificateDer::pem_slice_iter(root_pem) {
+        roots
+            .add(cert.map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    }
+    let inner = WebPkiServerVerifier::builder_with_provider(Arc::new(roots), Arc::clone(&provider))
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(rustls::ClientConfig::builder_with_provider(provider)
+        .with_safe_default_protocol_versions()
+        .map_err(|e| e.to_string())?
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(LenientVerifier { inner, mutant }))
+        .with_no_client_auth())
 }
 
 /// Every client adapter this build has: the list CI runs the client suite over.
 pub fn client_adapters() -> Vec<Box<dyn ClientSubject>> {
-    vec![Box::new(ClientAdapterSubject(HyperClientAdapter::new()))]
+    vec![Box::new(HyperClientSubject)]
 }
 
 /// The reference client subject.
-pub fn client_reference() -> ClientAdapterSubject<HyperClientAdapter> {
-    ClientAdapterSubject(HyperClientAdapter::new())
+pub fn client_reference() -> HyperClientSubject {
+    HyperClientSubject
 }
 
 // --- the raw peer -------------------------------------------------------------------------------------------------------------------------
@@ -610,6 +789,148 @@ async fn connection_reuse(s: &dyn ClientSubject) -> Outcome {
     Ok(())
 }
 
+/// A TLS server written here (tokio-rustls, not HTTPAnt's own), with a self-signed certificate for `name`, answering `secure` to any request.
+struct TlsPeer {
+    addr: SocketAddr,
+    cert_pem: String,
+    requests: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+async fn tls_peer(name: &str) -> Result<TlsPeer, String> {
+    let made = rcgen::generate_simple_self_signed(vec![name.to_owned()])
+        .map_err(|e| format!("test certificate: {e}"))?;
+    let key = PrivateKeyDer::try_from(made.signing_key.serialize_der())
+        .map_err(|e| format!("test key: {e}"))?;
+    let config = rustls::ServerConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .map_err(|e| format!("test server: {e}"))?
+    .with_no_client_auth()
+    .with_single_cert(vec![made.cert.der().clone()], key)
+    .map_err(|e| format!("test server: {e}"))?;
+    let acceptor = TlsAcceptor::from(Arc::new(config));
+    let (listener, addr) = listen().await?;
+    let requests = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = Arc::clone(&requests);
+    tokio::spawn(async move {
+        while let Ok((tcp, _)) = listener.accept().await {
+            let acceptor = acceptor.clone();
+            let counter = Arc::clone(&counter);
+            tokio::spawn(async move {
+                let Ok(mut tls) = acceptor.accept(tcp).await else {
+                    return;
+                };
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 4096];
+                while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match tls.read(&mut chunk).await {
+                        Ok(0) | Err(_) => return,
+                        Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                    }
+                }
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = tls
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nsecure",
+                    )
+                    .await;
+                let _ = tls.shutdown().await;
+            });
+        }
+    });
+    Ok(TlsPeer {
+        addr,
+        cert_pem: made.cert.pem(),
+        requests,
+    })
+}
+
+/// Case 8: https is verified. The peer here is a TLS server of our own with self-signed certificates. A client that declares `tls: yes` must
+/// fetch from a peer whose certificate it was told to trust and whose name matches; refuse a peer whose certificate it was not told to trust;
+/// refuse one whose certificate does not name the host it connected to; and, with no extra root, refuse a self-signed peer (the bundled roots
+/// are the only trust it has). A client that declares `tls: no` must refuse the https URL and never connect.
+async fn client_https(s: &dyn ClientSubject) -> Outcome {
+    use std::sync::atomic::Ordering::SeqCst;
+    let right = tls_peer("127.0.0.1").await?;
+    let wrong = tls_peer("other.example").await?;
+    let url_right = format!("https://{}/", right.addr);
+    let url_wrong = format!("https://{}/", wrong.addr);
+
+    if s.declared().map(|c| c.tls) == Some(Support::No) {
+        let refused = s.client().get(&url_right).send().await;
+        ensure!(
+            refused.is_err(),
+            "a client that declares tls: no fetched an https URL"
+        );
+        ensure!(
+            right.requests.load(SeqCst) == 0,
+            "a client that declares tls: no connected to an https URL"
+        );
+        return Ok(());
+    }
+
+    let trusting = |pem: &str| {
+        s.client_trusting(pem.as_bytes()).ok_or_else(|| {
+            "this subject cannot be told to trust a root, so https cannot be measured on it"
+                .to_owned()
+        })
+    };
+
+    // 1. A certificate it trusts, for the name it connected to: the body arrives, over TLS.
+    let text = tokio::time::timeout(PROMPT, async {
+        trusting(&right.cert_pem)?
+            .get(&url_right)
+            .send()
+            .await
+            .map_err(err)?
+            .text()
+            .await
+            .map_err(err)
+    })
+    .await
+    .map_err(|_| "the https request did not finish in time".to_owned())??;
+    ensure!(
+        text == "secure",
+        "the https body was not the one the peer sent"
+    );
+    ensure!(
+        right.requests.load(SeqCst) == 1,
+        "the peer saw {} requests over TLS (expected 1)",
+        right.requests.load(SeqCst)
+    );
+
+    // 2. A trusted certificate that names another host: refused at the handshake, nothing sent.
+    let name_mismatch = trusting(&wrong.cert_pem)?.get(&url_wrong).send().await;
+    ensure!(
+        matches!(name_mismatch, Err(Error::TlsHandshake(_))),
+        "a certificate for another host name was not refused with a TLS handshake error"
+    );
+    ensure!(
+        wrong.requests.load(SeqCst) == 0,
+        "a request was sent to a peer whose certificate did not name the host"
+    );
+
+    // 3. A certificate it was not told to trust (it trusts `wrong`'s, connects to `right`): refused at the handshake, nothing sent.
+    let untrusted = trusting(&wrong.cert_pem)?.get(&url_right).send().await;
+    ensure!(
+        matches!(untrusted, Err(Error::TlsHandshake(_))),
+        "an untrusted certificate was not refused with a TLS handshake error"
+    );
+    ensure!(
+        right.requests.load(SeqCst) == 1,
+        "a request was sent to a peer whose certificate was not trusted"
+    );
+
+    // 4. With no extra root at all, a self-signed peer is refused: the default trust is the bundled roots and nothing else.
+    let default_trust = s.client().get(&url_right).send().await;
+    ensure!(
+        matches!(default_trust, Err(Error::TlsHandshake(_))),
+        "a self-signed certificate was accepted with no extra root"
+    );
+    Ok(())
+}
+
 /// Probe, not a requirement: does the adapter follow a `302`? `Ok(true)` means it did (the caller got the final `200`), `Ok(false)` that it
 /// returned the `302` as it is. Anything else is an error: half-following is a defect either way.
 async fn follows_redirect(s: &dyn ClientSubject) -> Result<bool, String> {
@@ -679,7 +1000,7 @@ macro_rules! run_fn {
 }
 
 /// The client cases.
-pub const CLIENT_CASES: [ClientCase; 7] = [
+pub const CLIENT_CASES: [ClientCase; 8] = [
     ClientCase {
         number: 1,
         id: "client-method-fidelity",
@@ -729,6 +1050,16 @@ pub const CLIENT_CASES: [ClientCase; 7] = [
         mutants: &[ClientMutant::NoConnectionReuse],
         run: run_fn!(connection_reuse),
     },
+    ClientCase {
+        number: 8,
+        id: "client-https",
+        requirement: "https is verified: a trusted certificate for the right host name is fetched over TLS; an untrusted one, one for another host name, and a self-signed one with no extra root are refused at the handshake before anything is sent",
+        mutants: &[
+            ClientMutant::AcceptAnyCertificate,
+            ClientMutant::IgnoreHostName,
+        ],
+        run: run_fn!(client_https),
+    },
 ];
 
 /// Run every client case against `subject`.
@@ -774,6 +1105,8 @@ pub struct ClientMeasured {
     pub connection_reuse: Support,
     /// The redirect probe.
     pub follows_redirects: Support,
+    /// Case 8.
+    pub tls: Support,
 }
 
 fn support(r: &Outcome) -> Support {
@@ -791,5 +1124,6 @@ pub async fn measure_client(s: &dyn ClientSubject) -> ClientMeasured {
             Ok(false) => Support::No,
             Err(_) => Support::Unknown,
         },
+        tls: support(&client_https(s).await),
     }
 }
