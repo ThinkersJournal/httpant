@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.15] - 2026-10-31
+
+- Documentation only: rocket's refusal of extension methods is now **measured** (ROADMAP row 6; PM: "read, not run" is not acceptable for the release matrix). A throwaway probe ran a real rocket 0.5.2 with one route and a raw TCP client: `GET /` `200` (control), `PROPFIND /` and `FOO /` **`400 Bad Request`**, and `PATCH`, `CONNECT`, `TRACE` (known methods, no route) `404`. The `404` rows are the control for the `400`: the same route table answers a known method without a route with `404`, so the `400` is the method being refused. This confirms the source reading behind CHANGELOG 0.1.9 (an extension method never reaches a route, so conformance case 1 cannot pass); rocket stays out. The design note's row says "measured" and points at `docs/ROCKET-PROBE.md`, which holds the result and the whole probe so it can be re-run. Not covered: a rocket fairing or request guard that might see the request first, and later rocket releases. Not published.
+
 ## [0.5.14] - 2026-10-31
 
 - **salvo serves HTTP/2 over TLS**, the last HTTP/2 item for the adapters that terminate TLS: every one of them (hyper, axum, poem, salvo) now offers `h2`. With the `http2` feature of `httpant-server` it enables salvo's own `http2`; salvo's connection builder reads the first bytes and serves HTTP/2 or HTTP/1.1, so HTTPAnt only has to offer `h2` on the listener it already owns (`salvo_tls.rs`). Declared `http2: Yes`. `tests/http2.rs` now runs on salvo as well: h2 negotiated and served, 8 concurrent streams, an HTTP/1.1 client on the same listener, and the 2 MiB limit answering `413` over h2. Salvo's builder also detects the h2 preface on cleartext, so its cleartext h2c answer **changed from `no` to `yes`** with the feature on (re-measured: the matrix now has axum, poem, salvo and warp accepting h2c, hyper and actix-web not).
