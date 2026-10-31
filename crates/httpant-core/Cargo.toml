@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+keywords = ["http", "body", "router", "tower", "abstraction"]
+categories = ["web-programming", "network-programming"]
 description = "HTTPAnt core types: the http crate's request/response types, a streaming Body with explicit limits, Error, IntoResponse, Capabilities"
 
 [dependencies]

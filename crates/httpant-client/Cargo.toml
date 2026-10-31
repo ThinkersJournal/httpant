@@ -5,6 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+keywords = ["http", "client", "hyper", "abstraction"]
+categories = ["web-programming::http-client", "network-programming"]
 description = "HTTPAnt client half: the Client builder, the ClientAdapter trait and the hyper-util reference adapter"
 
 [dependencies]

@@ -55,6 +55,37 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --locked --no-deps
 
+      # The published shape. Each crate ships what is in its own directory, so the licence files are copies; they must be the repository's.
+      - name: each crate ships the repository's licence files
+        if: runner.os == 'Linux'
+        run: |
+          for c in httpant-core httpant-server httpant-client; do
+            cmp LICENSE-MIT "crates/$c/LICENSE-MIT"
+            cmp LICENSE-APACHE "crates/$c/LICENSE-APACHE"
+          done
+
+      # Package every publishable crate in dependency order and build each from its own tarball, resolving the workspace crates from the
+      # tarballs just made (a dry run: nothing is uploaded). This is the first-release gate's "the package, not the checkout, works".
+      - name: package and verify every publishable crate (dry run)
+        if: runner.os == 'Linux'
+        run: cargo publish --workspace --dry-run --locked
+
+  # The minimum supported Rust version is a claim (`rust-version` in Cargo.toml), so it is checked, not asserted. The default build only: the
+  # optional adapters can need a newer compiler (actix-web 1.89, salvo 1.94; every feature on, 1.95) and cargo names the package that asks.
+  msrv:
+    name: Minimum supported Rust (default build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust 1.88
+        uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: 1.88.0
+
+      - name: cargo check on the minimum version
+        run: cargo check --locked -p httpant -p httpant-core -p httpant-server -p httpant-client --all-targets
+
   deny:
     name: cargo deny (advisories, licences, bans, sources)
     runs-on: ubuntu-latest
