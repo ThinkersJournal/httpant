@@ -8,6 +8,7 @@
 mod body;
 mod capabilities;
 mod error;
+mod extract;
 mod handler;
 mod layer;
 mod response;
@@ -19,6 +20,7 @@ pub use http;
 pub use body::{Body, BodyLimitExceeded, BoxError};
 pub use capabilities::{Capabilities, ClientCapabilities, DEFAULT_BODY_LIMIT, Support};
 pub use error::{Error, Result};
+pub use extract::{FromRequest, Path, Query};
 pub use handler::Handler;
 pub use layer::{LayerFn, apply_layers, layer_fn};
 pub use response::IntoResponse;

@@ -44,6 +44,7 @@ x509-parser = { workspace = true, optional = true }
 
 [dev-dependencies]
 httpant-client.workspace = true
+serde = { workspace = true, features = ["derive"] }
 futures-util.workspace = true
 http-body-util.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }

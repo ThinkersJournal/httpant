@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.28] - 2026-10-31
+
+- **Extractors (ROADMAP row 7):** a handler can take `Path<T>`, `Query<T>` and `PathParams` (and your own type through the new `FromRequest` trait) as arguments, one to four of them, built before the handler runs. `Path<T>` and `Query<T>` deserialize with serde into a struct or map (`Option` fields are optional); numbers and other text-parsed types are parsed. A value of the wrong kind, a missing required query field, or query bytes that are not UTF-8 are answered `400` before the handler runs, with a message that never repeats what the client sent (tested); a `Path` field the route does not capture is the handler's mistake and is `500`, naming no field. A failing extractor means the handler does not run (tested). The same on every adapter (`tests/extractors.rs` runs hyper, axum, actix-web, poem, salvo and warp). `httpant-core` gains two dependencies already in the lock file (`serde`, `serde_urlencoded`); the `Request` and no-argument handler shapes are unchanged. Not published.
+
 ## [0.5.27] - 2026-10-31
 
 - HANDOFF rewritten to current state (0.5.23 to 0.5.26 merged, roadmap has no `next` rows, watch rows named). Docs only, no code change. Not published.
