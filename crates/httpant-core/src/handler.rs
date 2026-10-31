@@ -54,7 +54,7 @@ macro_rules! extractors {
                 Box::pin(async move {
                     $(let $t = match $t::from_request(&req) {
                         Ok(v) => v,
-                        Err(res) => return res,
+                        Err(res) => return *res,
                     };)+
                     drop(req);
                     self($($t),+).await.into_response()

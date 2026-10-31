@@ -25,10 +25,10 @@ use serde::de::DeserializeOwned;
 use crate::{IntoResponse, PathParams, Request, Response};
 
 /// Something a handler can take as an argument, built from the request without consuming its body. On failure the `Err` is the response sent
-/// instead of running the handler.
+/// instead of running the handler (boxed, a response being large).
 pub trait FromRequest: Sized + Send + 'static {
     /// Build the value from the request, or the response to answer with.
-    fn from_request(req: &Request) -> Result<Self, Response>;
+    fn from_request(req: &Request) -> Result<Self, Box<Response>>;
 }
 
 /// The path captures as a value of type `T` (a struct whose field names are the route's `:name` / `*rest` names, or a map).
@@ -46,14 +46,14 @@ pub struct Path<T>(pub T);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Query<T>(pub T);
 
-fn plain(status: StatusCode, text: &'static str) -> Response {
+fn plain(status: StatusCode, text: &'static str) -> Box<Response> {
     let mut res = text.into_response();
     *res.status_mut() = status;
-    res
+    Box::new(res)
 }
 
 impl FromRequest for PathParams {
-    fn from_request(req: &Request) -> Result<Self, Response> {
+    fn from_request(req: &Request) -> Result<Self, Box<Response>> {
         // The router puts the captures in the extensions; a route with none has none to give.
         Ok(req
             .extensions()
@@ -64,7 +64,7 @@ impl FromRequest for PathParams {
 }
 
 impl<T: DeserializeOwned + Send + 'static> FromRequest for Path<T> {
-    fn from_request(req: &Request) -> Result<Self, Response> {
+    fn from_request(req: &Request) -> Result<Self, Box<Response>> {
         let params = req
             .extensions()
             .get::<PathParams>()
@@ -94,7 +94,7 @@ impl<T: DeserializeOwned + Send + 'static> FromRequest for Path<T> {
 }
 
 impl<T: DeserializeOwned + Send + 'static> FromRequest for Query<T> {
-    fn from_request(req: &Request) -> Result<Self, Response> {
+    fn from_request(req: &Request) -> Result<Self, Box<Response>> {
         let raw = req.uri().query().unwrap_or("");
         let bad = || {
             plain(
