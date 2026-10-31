@@ -188,7 +188,7 @@ Filled by the conformance run, not by assertion. What is known today (source-rea
 | axum | rides hyper; same limits | survey: axum.rs |
 | actix-web | `!Send` handlers, single-threaded workers, Tower middleware only via a buffering bridge (`actix-tower` buffers the body, 500 on short-circuit) | `docs/ACTIX-ADAPTER-NOTES.md` |
 | poem, salvo, warp | none found by the conformance run (cases 1-12 pass); salvo keeps its listening socket open while draining, so the adapter wraps its acceptor to close it first | `docs/CAPABILITY-MATRIX.md`, `salvo_adapter.rs` |
-| rocket | **cannot do extension methods** (source reading, nothing run): rocket 0.5.2 has nine request methods and answers 400 to any other before a route is tried (`Request::from_hyp`, `BadMethod`), so conformance case 1 (`PROPFIND`) cannot pass. Not built | rocket 0.5.2 `src/request/request.rs`, `rocket_http` `method.rs` |
+| rocket | **cannot do extension methods** (**measured** 2026-10-31, rocket 0.5.2: `PROPFIND` and a made-up method get `400` while a known method with no route gets `404`, so the `400` is the method being refused; also read in `Request::from_hyp`, `BadMethod`), so conformance case 1 (`PROPFIND`) cannot pass. Not built | `docs/ROCKET-PROBE.md`, rocket 0.5.2 `src/request/request.rs`, `rocket_http` `method.rs` |
 
 `Capabilities` fields (initial): `websockets`, `request_streaming`, `response_streaming`, `graceful_shutdown`, `http2`, `trailers`, `tls`, `tls_reload`,
 `local_handlers`, `max_body_default`, `extension_methods`, `connect_method`. Each is `Supported | Unsupported(reason) | Unknown`, and the conformance run turns every
