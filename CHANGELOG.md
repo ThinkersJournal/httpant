@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.31] - 2026-10-31
+
+- ROADMAP row 13: `docs/H2C-POLICY.md` sets out the cleartext HTTP/2 options (refuse everywhere, leave per adapter, opt-in off by default) with the compatibility consequence of each and a recommendation (opt-in, after reading whether axum, poem, salvo and warp can refuse the preface). Options only: nothing built, nothing run. Docs only, no code change. Not published.
+
 ## [0.5.29] - 2026-10-31
 
 - ROADMAP row 10: ConfigurAnt's API read (not run) at its `bb7545e` and the result written into design section 10, replacing "UNVERIFIED": settings can reach HTTPAnt through a plain serde struct with no dependency on ConfigurAnt (whose `rust-version` is 1.95). A recommendation, nothing built. Docs only, no code change. Not published.
