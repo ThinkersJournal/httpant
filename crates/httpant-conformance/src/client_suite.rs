@@ -64,6 +64,8 @@ pub enum ClientMutant {
     AcceptAnyCertificate,
     /// https: the chain is checked against the roots, but the host name is not compared with the certificate.
     IgnoreHostName,
+    /// The private-address guard looks only at the host written in the URL, not at the address the name resolves to or the connection reaches.
+    GuardChecksNameOnly,
 }
 
 impl ClientMutant {
@@ -79,6 +81,7 @@ impl ClientMutant {
             ClientMutant::NoConnectionReuse => "client-no-connection-reuse",
             ClientMutant::AcceptAnyCertificate => "client-accept-any-certificate",
             ClientMutant::IgnoreHostName => "client-ignore-host-name",
+            ClientMutant::GuardChecksNameOnly => "client-guard-checks-name-only",
         }
     }
 }
@@ -189,6 +192,11 @@ pub trait ClientSubject: Send + Sync {
     fn client_trusting(&self, _root_pem: &[u8]) -> Option<Client> {
         None
     }
+
+    /// A client on this subject that was told to refuse private addresses, for the guard case. `None` if the subject cannot be told to.
+    fn client_refusing_private(&self) -> Option<Client> {
+        None
+    }
 }
 
 /// The reference client adapter as a subject: it can be told to trust a root.
@@ -209,6 +217,13 @@ impl ClientSubject for HyperClientSubject {
 
     fn client_trusting(&self, root_pem: &[u8]) -> Option<Client> {
         Client::builder().add_root_pem(root_pem).build().ok()
+    }
+
+    fn client_refusing_private(&self) -> Option<Client> {
+        Client::builder()
+            .refuse_private_addresses(true)
+            .build()
+            .ok()
     }
 }
 
@@ -252,6 +267,49 @@ impl ClientSubject for ClientMutantSubject {
             }
             _ => None,
         }
+    }
+
+    fn client_refusing_private(&self) -> Option<Client> {
+        match self.0 {
+            ClientMutant::GuardChecksNameOnly => {
+                Some(Client::with_adapter_impl(NameOnlyGuardAdapter {
+                    inner: HyperClientAdapter::new(),
+                }))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// A guard with one defect: it turns away a private IP written in the URL and nothing else, so a name that resolves to loopback is let through.
+struct NameOnlyGuardAdapter {
+    inner: HyperClientAdapter,
+}
+
+impl ClientAdapter for NameOnlyGuardAdapter {
+    fn id(&self) -> &'static str {
+        "hyper-name-only-guard-mutant"
+    }
+
+    fn capabilities(&self) -> ClientCapabilities {
+        self.inner.capabilities()
+    }
+
+    fn send(&self, req: Request) -> BoxFuture<'_, CoreResult<Response>> {
+        Box::pin(async move {
+            let host = req.uri().host().unwrap_or_default();
+            let literal = host.trim_start_matches('[').trim_end_matches(']');
+            if let Ok(ip) = literal.parse::<std::net::IpAddr>() {
+                let v4 = match ip {
+                    std::net::IpAddr::V4(a) => Some(a),
+                    std::net::IpAddr::V6(a) => a.to_ipv4_mapped(),
+                };
+                if ip.is_loopback() || v4.is_some_and(|a| a.is_loopback() || a.is_private()) {
+                    return Err(Error::PrivateAddress { address: ip });
+                }
+            }
+            self.inner.send(req).await
+        })
     }
 }
 
@@ -931,6 +989,79 @@ async fn client_https(s: &dyn ClientSubject) -> Outcome {
     Ok(())
 }
 
+/// Case 9: a client told to refuse private addresses refuses them wherever they come from, and sends nothing. The peer is a plain TCP listener
+/// on loopback that counts connections. Refused, with no connection made: the address written in the URL (IPv4, IPv6, IPv4 inside IPv6) and a
+/// **name** that resolves to loopback (`localhost`), which a check of the URL's host alone cannot see. As a control the same peer is reached by a
+/// client that was not told to refuse, so the refusals are the guard's doing and not an unreachable peer's.
+async fn client_private_guard(s: &dyn ClientSubject) -> Outcome {
+    use std::sync::atomic::Ordering::SeqCst;
+    let (listener, addr) = listen().await?;
+    let accepted = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = Arc::clone(&accepted);
+    tokio::spawn(async move {
+        while let Ok((mut conn, _)) = listener.accept().await {
+            counter.fetch_add(1, SeqCst);
+            tokio::spawn(async move {
+                if read_head(&mut conn).await.is_ok() {
+                    let _ = conn
+                        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\nopen")
+                        .await;
+                }
+            });
+        }
+    });
+    let port = addr.port();
+
+    // Control: not told to refuse, the same peer answers.
+    let text = tokio::time::timeout(PROMPT, async {
+        s.client()
+            .get(format!("http://127.0.0.1:{port}/"))
+            .send()
+            .await
+            .map_err(err)?
+            .text()
+            .await
+            .map_err(err)
+    })
+    .await
+    .map_err(|_| "the control request did not finish in time".to_owned())??;
+    ensure!(text == "open", "the control request got the wrong body");
+    let baseline = accepted.load(SeqCst);
+
+    let guarded = s
+        .client_refusing_private()
+        .ok_or("this subject cannot be told to refuse private addresses")?;
+    for (what, url) in [
+        (
+            "an IPv4 loopback literal",
+            format!("http://127.0.0.1:{port}/"),
+        ),
+        (
+            "a name that resolves to loopback",
+            format!("http://localhost:{port}/"),
+        ),
+        ("an IPv6 loopback literal", format!("http://[::1]:{port}/")),
+        (
+            "an IPv4 address inside an IPv6 literal",
+            format!("http://[::ffff:127.0.0.1]:{port}/"),
+        ),
+    ] {
+        let outcome = tokio::time::timeout(PROMPT, guarded.get(&url).send())
+            .await
+            .map_err(|_| format!("the request to {what} did not finish in time"))?;
+        ensure!(
+            matches!(outcome, Err(Error::PrivateAddress { .. })),
+            "{what} was not refused with a private-address error"
+        );
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    ensure!(
+        accepted.load(SeqCst) == baseline,
+        "a refused request still connected to the peer"
+    );
+    Ok(())
+}
+
 /// Probe, not a requirement: does the adapter follow a `302`? `Ok(true)` means it did (the caller got the final `200`), `Ok(false)` that it
 /// returned the `302` as it is. Anything else is an error: half-following is a defect either way.
 async fn follows_redirect(s: &dyn ClientSubject) -> Result<bool, String> {
@@ -1000,7 +1131,7 @@ macro_rules! run_fn {
 }
 
 /// The client cases.
-pub const CLIENT_CASES: [ClientCase; 8] = [
+pub const CLIENT_CASES: [ClientCase; 9] = [
     ClientCase {
         number: 1,
         id: "client-method-fidelity",
@@ -1059,6 +1190,13 @@ pub const CLIENT_CASES: [ClientCase; 8] = [
             ClientMutant::IgnoreHostName,
         ],
         run: run_fn!(client_https),
+    },
+    ClientCase {
+        number: 9,
+        id: "client-private-guard",
+        requirement: "a client told to refuse private addresses refuses an IPv4, an IPv6 and an IPv4-in-IPv6 loopback literal and a name that resolves to loopback, and makes no connection; the same peer answers a client that was not told to refuse",
+        mutants: &[ClientMutant::GuardChecksNameOnly],
+        run: run_fn!(client_private_guard),
     },
 ];
 

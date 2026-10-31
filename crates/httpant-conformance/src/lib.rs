@@ -349,6 +349,7 @@ mod tests {
             ClientMutant::NoConnectionReuse,
             ClientMutant::AcceptAnyCertificate,
             ClientMutant::IgnoreHostName,
+            ClientMutant::GuardChecksNameOnly,
         ];
         for m in all {
             let users = CLIENT_CASES
@@ -384,6 +385,7 @@ mod tests {
     client_case_test!(client_case_6_streaming_request, 5);
     client_case_test!(client_case_7_connection_reuse, 6);
     client_case_test!(client_case_8_https, 7);
+    client_case_test!(client_case_9_private_guard, 8);
 
     #[tokio::test]
     async fn the_whole_client_suite_passes_on_every_client_adapter() {

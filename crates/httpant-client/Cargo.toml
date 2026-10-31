@@ -18,6 +18,7 @@ https = ["dep:hyper-rustls", "dep:rustls", "dep:webpki-roots"]
 [dependencies]
 httpant-core.workspace = true
 bytes.workspace = true
+tower.workspace = true
 http-body.workspace = true
 hyper-rustls = { workspace = true, optional = true }
 rustls = { workspace = true, optional = true }
