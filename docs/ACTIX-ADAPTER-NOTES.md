@@ -43,3 +43,31 @@ trait, `!Send` futures and runtime, and how HTTPAnt's handler type expresses the
    Recommendation for the first actix slice: **C**, since it adds no dependency and has no 500 trap; revisit A or B when actix-tower has a
    history. Unverified: that C avoids double buffering; the adapter spike must show it.
 4. Every limit above is a row in "what each adapter can NOT do", with a conformance test and a known-bad control.
+
+## `LocalHandler` (ROADMAP row 9): what building it would take, read 2026-10-31 at `ac365e9`
+
+Read, not built; nothing was run. Question: could a handler whose future is not `Send` (actix's `HttpRequest`, `Rc`, `RefCell`) be registered
+and run on the actix adapter only?
+
+- **The one service is `Send` and everything is wrapped around it.** `Server::into_service` makes the router and `.layer()` layers one
+  `BoxService` (a `BoxCloneService`, `Send`), and `ServeOptions::wrap` (`crates/httpant-server/src/adapter.rs`) wraps that service in the body
+  limits, the shutdown switch, the ACME challenge responder, the trusted-proxy `Origin` and the HTTPS redirect, in that order. Every adapter
+  calls `wrap` (conformance cases 14, 15, 16). A `!Send` handler cannot be inside that service.
+- **So a local route would bypass all of it** unless each wrapper is rewritten for `!Send` services. Without that, a local route would ignore
+  the body limit, answer on the port-80 redirect listener, miss the ACME prefix and see no `Origin`: a silent hole in the guarantees the
+  other routes have. That is the cost the earlier notes did not count.
+- **Routing would be split.** Local and ordinary routes on one path need one 405/`Allow` answer and one 404; today `Router` owns that
+  (`crates/httpant-core/src/router.rs`) and stores `Send` handlers only. Either a second router for local routes with a merge rule, or a generic
+  router over a handler kind.
+- **Construction is per worker.** actix runs a factory closure on each worker thread, so a local handler is a `Fn() -> Handler` factory (its
+  state cannot be shared across threads); the adapter must also run the factory for the TLS path, which is one actix thread (0.5.25), and the
+  cleartext path, which is two workers.
+- **The error side is simple:** `capabilities().local_handlers` already exists (`No` on five adapters, `No` on actix today) and a startup
+  error `LocalHandlersNotSupported` on `bind` is a few lines.
+
+Recommendation: do **not** build it without a consumer. No consumer has asked for it (nothing in this repository names a user, and no message to this lane did; WebHostAnt's need lists live in that
+repository and were not re-read for this), and a handler that holds `Rc` can almost always hold `Arc` instead, which the existing `Send` path already runs on
+actix. If a consumer needs actix-native state, the smaller route is to run HTTPAnt's service as a **tower service inside their own actix `App`**
+(an actix adapter for embedding, the reverse direction), which keeps the wrappers where they are. Estimated size of the in-adapter route:
+a generic router or a second one, `!Send` re-implementations of five wrappers, per-worker factories on two serve paths, and a conformance case with
+mutants for each wrapper on local routes: a PR the size of the TLS adapter work, for a feature with no named user.
