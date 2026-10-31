@@ -432,7 +432,7 @@ mod tests {
                 httpant_core::Support::Unknown => "unknown",
             };
             rows.push_str(&format!(
-                "| {} | {} | {} | {} | {} | {} | {} | {} |\n",
+                "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
                 subject
                     .name()
                     .trim_matches('`')
@@ -444,11 +444,12 @@ mod tests {
                 cell(declared.local_handlers),
                 cell(declared.tls),
                 cell(declared.http2),
+                cell(m.h2c),
                 declared.default_body_limit,
             ));
         }
         let table = format!(
-            "| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | terminates TLS | HTTP/2 (over TLS) | default body limit (bytes) |\n|---|---|---|---|---|---|---|---|\n{rows}"
+            "| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | terminates TLS | HTTP/2 (over TLS) | cleartext h2c (measured) | default body limit (bytes) |\n|---|---|---|---|---|---|---|---|---|\n{rows}"
         );
         let mut client_rows = String::new();
         for subject in &client_adapters() {

@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.13] - 2026-10-31
+
+- The cleartext HTTP/2 (h2c) difference between adapters is now **measured and shown** in the capability matrix (PM ruling: record it as measured, do not paper over it). A probe in the conformance suite (`h2_case::h2c_support`, field `Measured::h2c`) sends the HTTP/2 connection preface and an empty SETTINGS frame to a cleartext listener and reads the reply: an HTTP/2 SETTINGS frame is `yes`; HTTP/1.1 text, a closed connection or silence is `no`. It is a probe, not a case: nothing in the need list asks for h2c, so no adapter is failed for either answer. Result with the `http2` feature on: **axum, poem and warp accept h2c; hyper, actix-web and salvo do not.** Warp was not known to accept it before this. The matrix gets a *cleartext h2c (measured)* column and a note saying what `yes` and `no` mean and that the column does not say which is right. Documentation and a probe only; no adapter behaviour changed. Not published.
+
 ## [0.5.12] - 2026-10-30
 
 - HTTP/2 over TLS (WebHostAnt need 12: offer `h2` and `http/1.1`, with the chosen protocol visible), first slice, behind the new `http2` feature of `httpant-server` (hyper's `http2`, hyper-util's `server-auto`; pulls the `h2` crate). New capability `Capabilities::http2`. `TlsAcceptor::alpn_protocols(&[..])` sets what the listener offers (default `http/1.1`); **an adapter sets it to what it really serves**, `h2` first only if it speaks HTTP/2. The hyper adapter uses hyper-util's auto connection builder on TLS connections (HTTP/2 when negotiated, HTTP/1.1 otherwise) and keeps cleartext listeners on HTTP/1.1. axum and poem hand their own connection builders the TLS stream and offer `h2` too. Declared `http2: Yes` (with `tls` and `http2` on): hyper, axum, poem. Declared `No`: salvo (HTTP/1.1 on TLS), actix-web and warp (no TLS). `read_back` now offers `h2` and `http/1.1`, so the ALPN it reports is the one the listener would choose.

@@ -387,6 +387,8 @@ pub struct Measured {
     pub streaming_response_bodies: Support,
     /// Case 9.
     pub graceful_shutdown: Support,
+    /// Cleartext HTTP/2 by prior knowledge (h2c): a probe, not a requirement (`h2_case::h2c_support`).
+    pub h2c: Support,
 }
 
 /// `Yes` when the probe passed. A probe that fails says why on stderr, which a failing test prints: a bare `No` hides the reason.
@@ -414,6 +416,7 @@ pub async fn measure(s: &dyn Subject) -> Measured {
             &streaming_response(s).await,
         ),
         graceful_shutdown: support("graceful shutdown", &s.name(), &graceful_shutdown(s).await),
+        h2c: crate::h2_case::h2c_support(s).await,
     }
 }
 
