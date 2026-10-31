@@ -16,9 +16,12 @@ bytes.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
+serde.workspace = true
+serde_urlencoded.workspace = true
 thiserror.workspace = true
 tower.workspace = true
 
 [dev-dependencies]
+serde = { workspace = true, features = ["derive"] }
 futures-util = { workspace = true, features = ["alloc"] }
 tokio = { workspace = true, features = ["macros", "rt"] }
