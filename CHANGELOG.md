@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.24] - 2026-10-31
+
+- Documentation only: `docs/PATENT-SWEEP.md` gains the **re-sweep** its first scope line called for, for HTTP/2, the ACME handlers, client https and the private-address guard, at `6d564a0` (0.5.22): twelve queries, nine patents read in full (all independent claims), every one `outside as read` with the missing element named, none needing review. It also records, in the order it happened, that 0.5.19, 0.5.21 and 0.5.22 were published before this was done. Not legal advice; the absence of hits is weak evidence and the file says so. No code changed. Not published.
+
 ## [0.5.23] - 2026-10-31
 
 - Documentation only: ROADMAP row 12 (the once-seen failure of `the_whole_suite_passes_on_every_adapter`) now records the measurement asked for: 40 consecutive runs of that test under 32 saturating CPU-bound processes on a 32-core Windows machine at `6d564a0`, all passed, 33 s to 45 s each. Not reproduced, and not claimed fixed; the row stays on watch, and the test's failure message already names the adapter and the failing cases. No code changed. Not published.
