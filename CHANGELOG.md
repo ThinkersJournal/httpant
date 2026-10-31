@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.31] - 2026-10-31
+
+- ROADMAP row 13: `docs/H2C-POLICY.md` sets out the cleartext HTTP/2 options (refuse everywhere, leave per adapter, opt-in off by default) with the compatibility consequence of each and a recommendation (opt-in, after reading whether axum, poem, salvo and warp can refuse the preface). Options only: nothing built, nothing run. Docs only, no code change. Not published.
+
 ## [0.5.30] - 2026-10-31
 
 - ROADMAP row 9: `LocalHandler` analysed (read, not built) and the result written into `docs/ACTIX-ADAPTER-NOTES.md`: the one `Send` service carries every wrapper (limits, shutdown, ACME prefix, `Origin`, redirect), so a `!Send` route would silently bypass them; recommendation to defer until a consumer names it. Docs only, no code change. Not published.
