@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.20] - 2026-10-31
+
+- Documentation only: `docs/HTTPS-CLIENT-DESIGN.md`, the design note for https in the client (options and a recommendation, nothing built), and ROADMAP row 14. HANDOFF rewritten. It records, against WebHostAnt's 13 needs: rustls with the `ring` provider (as the server), bundled roots by default with the OS store as an explicit choice, a cargo feature `https`, and a private-address guard that works in three places (a filtering resolver, a check of IP-literal hosts that never reach the resolver, a post-connect check), plus one defect found while reading: `Error::InvalidUrl` prints the whole URL, query string included. Not published.
+
 ## [0.5.19] - 2026-10-31
 
 - **Fix: the Windows leg of CI was red on `main` after the restructure (#37).** Two examples were both called `hello` (the root `httpant` one a stranger copies, and `httpant-server`'s), so both wrote `target/debug/examples/hello.exe` (cargo warned `output filename collision`) and on Windows, linking at the same time, one failed with `LNK1104: cannot open file ... hello.exe`. The server crate's example is now `server_hello` (`cargo run --example server_hello -p httpant-server`). The root example, the README and the hub card are untouched. Not published.

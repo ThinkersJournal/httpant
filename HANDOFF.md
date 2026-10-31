@@ -1,30 +1,39 @@
-# HANDOFF - HTTPAnt lane (current state, rewritten 2026-10-29)
+# HANDOFF - HTTPAnt lane (current state, rewritten 2026-10-31)
 
 You are the **HTTPAnt lane** (sonnet only). Repo `ThinkersJournal/httpant`. Read `C:\Projects\AGENT-ONBOARDING.md` once. All messages and questions
-for CireSnave go to the PM peer (his standing rule, this session). Never merge, publish or allocate version numbers (placeholders only; PM renumbers
-with `tools/renumber-version.py`).
+for CireSnave go to the PM peer (his standing rule). Never merge, publish or allocate version numbers (placeholders only; the PM renumbers with
+`tools/renumber-version.py`). Never `gh auth switch`; never run on Opus.
 
 ## What this is
-Library-agnostic HTTP layer: core + server half + client half, web library chosen by id, a conformance suite every adapter must pass, Tower-family
-adapters first. Crates claimed on crates.io at 0.0.0: `httpant`, `httpant-core`, `httpant-server`, `httpant-client`. Old `web-server-abstraction`
-1.0.2 stays unyanked; its README (this repo) lists known issues. Design: `docs/HTTPANT-DESIGN.md`. Evidence: `docs/OLD-CRATE-SURVEY.md`,
-`docs/BENCHMARKS.md`, `docs/ACTIX-ADAPTER-NOTES.md`.
+Library-agnostic HTTP layer: core + server half + client half, web library chosen by id, a conformance suite every adapter must pass.
+`httpant` is the root package (a thin facade); `httpant-core`, `-server`, `-client`, `-conformance` live under `crates/`. **0.5.19 is published**
+(httpant-core, -client, -server, httpant; tag `v0.5.19` on main `1e926bd`, PM, 2026-10-31). Design: `docs/HTTPANT-DESIGN.md`. Evidence docs are in
+`docs/` (capability matrix, TLS probes, rocket and actix results, patent sweep, fresh-eyes trial).
 
 ## State
-- Work list: `ROADMAP.md` (the repo's own, PM's order). Merged: slices 1a-7, percent-decoding (#17, 0.2.0), limits (#18, 0.3.0), shutdown grace (#19, 0.4.0).
-- **Open PR:** FIRST-RELEASE GATE (PM [TASK] 2026-10-31, EXPECTATIONS 6.24). Two PRs, stacked: (1) the restructure, #37 (branch `feat/first-release-gate`, worktree `C:\Projects\httpant-wt-gate`, 0.5.17, in the PM's gate): `httpant` becomes the ROOT package, nothing else; (2) the packaging PR (branch `feat/release-packaging`, worktree `C:\Projects\httpant-wt-pack`, 0.5.18; pushed, **PR not opened yet because #37 has not merged**: when it does, `git rebase --onto origin/main <old #37 head ef9e571> feat/release-packaging`, re-run the checks, open the PR, then send the PM the gate `[READY]`): README hello-world, metadata + `include`, per-crate README + licences, the hub card, `docs/FRESH-EYES-TRIAL.md` (passed; README fixed after it), CI package dry-run + `msrv` job, the ROADMAP gate table (G1 to G11). Trial scaffolding (vendored mirror, packaged crates, the agent's directory) is in the session scratchpad `trial/`; `docs/FRESH-EYES-TRIAL.md` says how to repeat it. Not done and the PM's to decide: the version number, the publish and credentials, the tag, and the hub registry flip (`repo` + `card = "required"` in the easyants repository). Publish order: httpant-core, httpant-client, httpant-server, httpant (conformance is publish = false). Also open at the PM: #36 case-10 mutants (0.5.16). The actix spike code is on remote branch `spike/actix-tls` (e799dc8, not for merge; result in `docs/TLS-ADAPTER-PROBES.md`). Merged: TLS first half (#21), sweep (#22, #23), read-back (#24), ACME prefix (#25), 80->443 redirect (#26), audit events (#27), case 17 (#28), poem + salvo TLS (#29), actix result (#30), acme-tls/1 (#31), HTTP/2 first slice (#32), h2c measured (#33), salvo HTTP/2 (#34), rocket measured (#35, 0.5.15).
-- **Lesson (salvo):** Windows green is not Linux green. Wait for the ubuntu job before calling an adapter or a limit done.
-- **Option A (Tower core, thin adapters) is PROVISIONAL**: PM told me to proceed 2026-10-29 while CireSnave decides A/B/C.
-- Rules decided: no trailing-slash normalisation (design section 3); path captures decoded, literals raw (CHANGELOG 0.2.0); limits enforced by HTTPAnt on the request (0.3.0); shutdown grace enforced by a Tower wrapper (0.4.0); forwarded headers believed only from configured trusted proxies (0.5.0).
-- WebHostAnt agreed the TLS plan (rustls only, feature `tls`, `CertSource` trait, HTTPAnt-owned acceptor below adapters, actix/warp likely edge-mode only; need 14 with the CertSource slice, need 22 read-back in it). Edge mode (their first integration point) is merged and they were told.
-- Publish is the PM's call: the sweep (`docs/PATENT-SWEEP.md`) is accepted as honest and thin; the PM reads what is already on crates.io first.
-
-## Next (in order)
-1. After each PR merges: remove its worktree + branch. HTTP/2 is done for every adapter that terminates TLS; row 13 (h2c) is decided by the PM (not uniform, recorded as measured). Next from the ROADMAP (rows 6 and 8 are done): row 12 (flaky suite: loop `the_whole_suite_passes_on_every_adapter` under load and keep the output, name the case), then row 5 (benchmarks, last). Optionally an actix-web adapter through `actix-server`/`actix-http` that runs HTTPAnt's own acceptor (the clean route; not built, `docs/TLS-ADAPTER-PROBES.md`). Run `RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps` before every push (CI does; it caught a broken link on #26). Then row 5 (benchmarks); the flaky-suite row needs evidence.
+- Work list: `ROADMAP.md` (PM's order). The first-release gate (G1 to G11) is done and published. Open at the PM: the hub registry flip
+  (`repo = "ThinkersJournal/httpant"`, `card = "required"` in the easyants repository) goes to CireSnave via the board.
+- **Current TASK (PM, 2026-10-31):** client https. The client refuses `https://` today, which blocks WebHostAnt (Cloudflare API, health probes).
+  Done in the design-note PR: ROADMAP row 14 and `docs/HTTPS-CLIENT-DESIGN.md` (options + recommendation: rustls/ring, bundled roots default, OS
+  store opt-in, feature `https`, private-address guard in the resolver plus a literal check plus a post-connect backstop). **Stop at the PM's
+  [READY]**; the implementation PRs come after the PM decides the four questions at the end of the note. WebHostAnt's needs: WebHostAnt PR 20,
+  `docs/HTTPS-CLIENT-NEEDS.md` (13 needs).
+- **Parked, unblocked, start when the TASK is handed over:** ROADMAP row 12, the flaky `the_whole_suite_passes_on_every_adapter` (failed once on
+  Windows, not reproduced; the assertion message already names the adapter and the failed cases). Plan: build the test binary once and run just that
+  test in a loop under CPU load, keep every failing output. Then row 5 (benchmarks, last). Optional: a clean actix adapter through
+  `actix-server`/`actix-http` running HTTPAnt's own acceptor (`docs/TLS-ADAPTER-PROBES.md`). Row 13 (h2c) is decided: not uniform, recorded as measured.
+- **Option A (Tower core, thin adapters) is provisional**: CireSnave has not decided A/B/C.
+- **Lessons:** Windows green is not Linux green (salvo). Two examples with the same name in one workspace write the same `target/.../examples/<name>.exe`
+  and race on Windows (`LNK1104`; fixed in 0.5.19 by `server_hello`); read cargo's `output filename collision` warning. Read main's post-merge CI on
+  **both** OSes after every merge. A force-push of a rebased branch is denied by the classifier: push the rebased branch under a new name.
 
 ## Standing constraints
-- `CARGO_BUILD_JOBS=2`, one build at a time. Primary checkout stays on `main`; every branch in `C:\Projects\httpant-wt-<topic>`.
-- No `#[ignore]`. Never weaken `deny.toml`. Every pushed change bumps version + CHANGELOG (placeholder). Cargo.lock must match the version
+- `CARGO_BUILD_JOBS=2`, one build at a time. Primary checkout stays on `main`; every branch in `C:\Projects\httpant-wt-<topic>`; remove worktree
+  and branch after a merge (`git worktree remove`, `git worktree prune`, `git branch -D`; the remote branch with `gh api -X DELETE`, verify absent).
+- No `#[ignore]`. Never weaken `deny.toml`. Every pushed change bumps version + CHANGELOG (placeholder); `Cargo.lock` must match
   (`cargo metadata --locked --offline`).
-- **Publish is the PM's decision** (the sweep is accepted as honest and thin). actix-tower is not a hard dependency without a decision.
+- Before every push: `cargo fmt --all --check`, `cargo clippy --all-targets --locked -- -D warnings` (also per feature and per adapter when they changed),
+  `RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps`, `cargo test --locked --no-fail-fast`. Then PR, watch CI, count unresolved review threads
+  by GraphQL, send `[READY] httpant#N head=... checks=... threads=...`. Do not print network text in test assertion messages (CodeQL).
+- Subagents: pin `model: sonnet`. Scratch files go in the session scratchpad, not `rm`.
 - Stale files to fix when touched: `CONTRIBUTING.md`, `.github/copilot-instructions.md` still describe the old crate.
