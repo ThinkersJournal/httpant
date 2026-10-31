@@ -85,7 +85,7 @@ so the same program behaves the same on each. What each one does, as measured an
 - The client calls `https://` only with the `https` feature (`cargo add httpant --features https`): rustls, TLS 1.2 and 1.3, the bundled Mozilla
   roots plus any CA you add with `add_root_pem`, the certificate and the host name verified, and no switch to turn that off. **rustls does not check
   certificate revocation**, so a certificate that was revoked but has not expired is still accepted. Without the feature an `https://` URL is an error
-  that names it. The client follows no redirects, uses no proxy, and has no private-address guard yet.
+  that names it. The client follows no redirects and uses no proxy. For a URL someone else chose (a health probe), `Client::builder().refuse_private_addresses(true)` refuses loopback, private-network, link-local (the cloud metadata address) and other non-public addresses, judged on the address actually connected to.
 - TLS termination is in hyper, axum, poem and salvo; actix-web and warp serve behind an edge that terminates it, and refuse a TLS acceptor by name
   instead of serving in clear. rocket is not supported: it answers an unknown method such as `PROPFIND` with `400` before a route is tried
   ([measured](https://github.com/ThinkersJournal/httpant/blob/main/docs/ROCKET-PROBE.md)).

@@ -25,7 +25,7 @@ Client adapters, measured by the client cases against a raw-TCP peer (`client_su
 <!-- client-matrix:end -->
 
 - *connection reuse*: client case 7 (two requests to one host, one connection). *follows redirects*: a probe, not a requirement; an adapter either
-  follows a `302` or returns it as it is, and half-following is an error. *TLS*: measured by client case 8 against a TLS peer written in the suite (a trusted certificate is fetched; an untrusted one, one for another host name and a self-signed one with no extra root are refused before anything is sent). It is `yes` only when the `https` feature is on, which the suite builds with.
+  follows a `302` or returns it as it is, and half-following is an error. *TLS*: measured by client case 8 against a TLS peer written in the suite (a trusted certificate is fetched; an untrusted one, one for another host name and a self-signed one with no extra root are refused before anything is sent). It is `yes` only when the `https` feature is on, which the suite builds with. Client case 9 holds `refuse_private_addresses` to its promise: an IPv4, an IPv6 and an IPv4-in-IPv6 loopback literal and a *name* that resolves to loopback are refused with no connection made, while the same peer answers a client that was not told to refuse (the mutant that checks only the host written in the URL fails it on the name).
 - *streaming request bodies* / *streaming response bodies* (server): conformance case 8. The first chunk crosses the connection while the other side is still
   producing (response) or sending (request); gated by handler signals, not by sleeps.
 - *graceful shutdown*: case 9. After shutdown is requested: a request in flight completes, an idle keep-alive connection is closed, new

@@ -81,6 +81,15 @@ pub enum Error {
         /// The cargo feature that provides it.
         feature: &'static str,
     },
+    /// A client told to refuse private addresses was about to connect to one (loopback, a private network, link-local such as a cloud metadata
+    /// address, and the like), whether the URL named it, a name resolved to it, or a connection reached it.
+    #[error(
+        "refused to connect to the private address {address}: this client was built to refuse loopback, private, link-local and other non-public addresses; use a public address, or build the client without refuse_private_addresses"
+    )]
+    PrivateAddress {
+        /// The address that was refused.
+        address: std::net::IpAddr,
+    },
     /// A client's TLS handshake failed (an untrusted or expired certificate, a name that does not match, a peer that does not speak TLS).
     #[error(
         "TLS handshake failed: {0}; check the host name and that its certificate is trusted and not expired (add_root_pem trusts a private CA)"
@@ -123,7 +132,9 @@ impl Error {
             Error::Timeout(_) | Error::ConnectTimeout(_) | Error::ReadTimeout(_) => {
                 StatusCode::GATEWAY_TIMEOUT
             }
-            Error::Request(_) | Error::TlsHandshake(_) => StatusCode::BAD_GATEWAY,
+            Error::Request(_) | Error::TlsHandshake(_) | Error::PrivateAddress { .. } => {
+                StatusCode::BAD_GATEWAY
+            }
         }
     }
 }

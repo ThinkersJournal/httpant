@@ -7,6 +7,7 @@
 //! declared in [`httpant_core::ClientCapabilities`] and measured by the client conformance cases, never silent.
 
 mod adapter;
+mod guard;
 mod hyper_adapter;
 
 pub use adapter::ClientAdapter;
@@ -147,6 +148,18 @@ impl ClientBuilder {
     /// Give up if a response body is quiet for this long between chunks (default 30 s). The error says it was the read.
     pub fn read_timeout(mut self, limit: Duration) -> Self {
         self.settings.read_timeout = limit;
+        self
+    }
+
+    /// Refuse to connect to loopback, private-network, link-local (the cloud metadata address among them), carrier-grade-NAT, multicast, documentation
+    /// and reserved addresses, with [`Error::PrivateAddress`]; off by default. For a client that fetches a URL someone else chose (a health probe, a
+    /// webhook) so that it cannot be aimed at your own network. The check is on the address actually connected to, in three places: the name lookup
+    /// keeps only public answers (so a name that resolves to a private address, or to a public and a private one, cannot slip through), an IP written
+    /// in the URL is refused before connecting, and the connection is looked at once more after it is made, before TLS and before any request byte.
+    /// An IPv4 address inside an IPv6 one (`::ffff:10.0.0.1`, NAT64, 6to4) is judged as the IPv4 address. A followed redirect would pass through
+    /// the same connector, so the guard applies to it too. Through a proxy (not supported yet) the address reached would be the proxy's.
+    pub fn refuse_private_addresses(mut self, refuse: bool) -> Self {
+        self.settings.refuse_private = refuse;
         self
     }
 
@@ -569,6 +582,41 @@ mod tests {
             matches!(err, Error::Tls(_)),
             "a PEM that holds no certificate must be refused: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_client_built_to_refuse_private_addresses_does_and_the_default_client_does_not() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let _peer = tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            while let Ok((mut conn, _)) = listener.accept().await {
+                let mut buf = [0u8; 1024];
+                let _ = conn.read(&mut buf).await;
+                let _ = conn
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+                    .await;
+            }
+        });
+        // Control: the default client reaches loopback.
+        let open = Client::new().get(format!("http://{addr}/")).send().await;
+        assert_eq!(open.unwrap().text().await.unwrap(), "ok");
+        let guarded = Client::builder()
+            .refuse_private_addresses(true)
+            .build()
+            .unwrap();
+        for url in [
+            format!("http://{addr}/x?token=SECRETQ"),
+            format!("http://localhost:{}/x?token=SECRETQ", addr.port()),
+            "http://[::1]:1/x?token=SECRETQ".to_owned(),
+            "http://[::ffff:169.254.169.254]/latest/meta-data?token=SECRETQ".to_owned(),
+        ] {
+            let err = guarded.get(&url).send().await.unwrap_err();
+            assert!(matches!(err, Error::PrivateAddress { .. }), "{url}: {err}");
+            for text in [err.to_string(), format!("{err:?}")] {
+                assert!(!text.contains("SECRETQ"), "the error carried the query");
+            }
+        }
     }
 
     #[test]

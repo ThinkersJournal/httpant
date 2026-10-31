@@ -12,9 +12,11 @@ use httpant_core::{
 };
 use hyper_util::client::legacy::Client;
 use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::connect::dns::GaiResolver;
 use hyper_util::rt::TokioExecutor;
 
 use crate::ClientAdapter;
+use crate::guard::{GuardConnector, GuardResolver, PrivateAddress};
 
 /// Connect before this, unless the builder says otherwise.
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -23,16 +25,21 @@ pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 /// A response body may go quiet for this long between chunks, unless the builder says otherwise.
 pub const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// The TCP connector with the private-address guard wrapped around it twice (the lookup and the connection). With the guard off both are
+/// pass-throughs, so there is one path, not a guarded one and an unguarded one.
+type Guarded = GuardConnector<HttpConnector<GuardResolver<GaiResolver>>>;
 #[cfg(feature = "https")]
-type Connector = hyper_rustls::HttpsConnector<HttpConnector>;
+type Connector = hyper_rustls::HttpsConnector<Guarded>;
 #[cfg(not(feature = "https"))]
-type Connector = HttpConnector;
+type Connector = Guarded;
 
 /// What the builder hands the adapter.
 #[derive(Clone, Debug)]
 pub(crate) struct Settings {
     pub(crate) connect_timeout: Duration,
     pub(crate) read_timeout: Duration,
+    /// Refuse to connect to loopback, private, link-local and other non-public addresses.
+    pub(crate) refuse_private: bool,
     /// PEM text of extra trusted roots, checked when the adapter is built.
     pub(crate) extra_roots_pem: Vec<Vec<u8>>,
 }
@@ -42,6 +49,7 @@ impl Default for Settings {
         Self {
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             read_timeout: DEFAULT_READ_TIMEOUT,
+            refuse_private: false,
             extra_roots_pem: Vec::new(),
         }
     }
@@ -64,17 +72,21 @@ impl HyperClientAdapter {
     }
 
     pub(crate) fn from_settings(settings: &Settings) -> Result<Self> {
-        let mut http = HttpConnector::new();
+        let mut http = HttpConnector::new_with_resolver(GuardResolver::new(
+            GaiResolver::new(),
+            settings.refuse_private,
+        ));
         http.set_connect_timeout(Some(settings.connect_timeout));
+        // The TLS wrapper decides the scheme, so the TCP connector must not insist on http.
         #[cfg(feature = "https")]
-        let connector = {
-            http.enforce_http(false);
-            hyper_rustls::HttpsConnectorBuilder::new()
-                .with_tls_config(tls::client_config(&settings.extra_roots_pem)?)
-                .https_or_http()
-                .enable_http1()
-                .wrap_connector(http)
-        };
+        http.enforce_http(false);
+        let guarded = GuardConnector::new(http, settings.refuse_private);
+        #[cfg(feature = "https")]
+        let connector = hyper_rustls::HttpsConnectorBuilder::new()
+            .with_tls_config(tls::client_config(&settings.extra_roots_pem)?)
+            .https_or_http()
+            .enable_http1()
+            .wrap_connector(guarded);
         #[cfg(not(feature = "https"))]
         let connector = {
             if !settings.extra_roots_pem.is_empty() {
@@ -82,7 +94,7 @@ impl HyperClientAdapter {
                     "add_root_pem needs https: enable the `https` feature".to_owned(),
                 ));
             }
-            http
+            guarded
         };
         Ok(Self {
             client: Client::builder(TokioExecutor::new()).build(connector),
@@ -102,6 +114,9 @@ impl HyperClientAdapter {
         while let Some(err) = cur {
             let mut node = err;
             loop {
+                if let Some(PrivateAddress(address)) = node.downcast_ref::<PrivateAddress>() {
+                    return Error::PrivateAddress { address: *address };
+                }
                 if let Some(tls) = tls::describe(node) {
                     return Error::TlsHandshake(tls);
                 }
