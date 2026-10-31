@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.19] - 2026-10-31
+
+- **Fix: the Windows leg of CI was red on `main` after the restructure (#37).** Two examples were both called `hello` (the root `httpant` one a stranger copies, and `httpant-server`'s), so both wrote `target/debug/examples/hello.exe` (cargo warned `output filename collision`) and on Windows, linking at the same time, one failed with `LNK1104: cannot open file ... hello.exe`. The server crate's example is now `server_hello` (`cargo run --example server_hello -p httpant-server`). The root example, the README and the hub card are untouched. Not published.
+
 ## [0.5.18] - 2026-10-31
 
 - **The package, not the checkout** (first-release gate, EXPECTATIONS 6.24). Nothing is published and no adapter behaviour changed.

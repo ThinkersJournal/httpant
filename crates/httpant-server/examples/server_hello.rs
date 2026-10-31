@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Serve "hello" and fetch it. CI runs this (`cargo run --example hello -p httpant-server`), so it cannot rot.
+//! Serve "hello" and fetch it. CI runs this (`cargo run --example server_hello -p httpant-server`), so it cannot rot.
 //!
 //! Anything that came off the network is escaped before it is printed: copy that habit, a reply can contain CR/LF and fake log lines.
 use httpant_client::Client;

@@ -45,7 +45,7 @@ jobs:
         run: cargo test --locked -p httpant-server --lib
 
       - name: hello-world example, run in CI
-        run: cargo run --locked --example hello -p httpant-server
+        run: cargo run --locked --example server_hello -p httpant-server
 
       - name: the `httpant` facade's hello-world (the one a stranger copies), run in CI
         run: cargo run --locked --example hello -p httpant

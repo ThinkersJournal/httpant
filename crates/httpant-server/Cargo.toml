@@ -53,5 +53,5 @@ tokio-rustls.workspace = true
 
 # Examples are built and run in CI; `test = true` also runs the unit tests inside them.
 [[example]]
-name = "hello"
+name = "server_hello"
 test = true
