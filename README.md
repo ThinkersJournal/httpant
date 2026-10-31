@@ -15,8 +15,10 @@ async fn main() -> httpant::Result<()> {
 }
 ```
 
-That is the whole program: it serves `hello`, fetches it, and checks it. It is compiled and run in this repository's CI, so it cannot rot.
-A handler returns anything that is `IntoResponse` (a `&str` here), and an error says what to do next.
+That is the whole program. It prints nothing: it serves `hello`, fetches it and checks it with `assert_eq!`, so a run that exits with status 0 worked.
+It needs the two `cargo add` commands under Install, and it is compiled and run in this repository's CI, so it cannot rot.
+A handler returns anything that is `IntoResponse` (a `&str` here). `httpant::Result<T>` is `Result<T, httpant::Error>`, and every `httpant::Error`
+prints (with `{}`) as a sentence that ends with what to do next.
 
 ## Install
 
@@ -27,21 +29,26 @@ cargo add tokio --features macros,rt-multi-thread    # for #[tokio::main]
 
 ## Choose the web library
 
-The default is hyper. Any other library is a cargo feature of the same name and one id in the code; the rest of your program does not change:
+The default is hyper. Any other library is a cargo feature of the same name and one id in the code. This is the first program with one call
+changed (`Server::new()` became `Server::with_adapter("hyper")?`); nothing else moves:
 
 ```rust
-use httpant::Server;
-
+use httpant::{Client, Server};
 #[tokio::main]
 async fn main() -> httpant::Result<()> {
     // "hyper" is always there; "axum", "actix-web", "poem", "salvo" and "warp" after `cargo add httpant --features axum` (and so on).
-    let server = Server::with_adapter("hyper")?.get("/", || async { "hello" }).bind("127.0.0.1:0").await?;
-    server.shutdown().await
+    let app = Server::with_adapter("hyper")?.get("/", || async { "hello" });
+    let server = app.bind("127.0.0.1:0").await?;
+    let url = format!("http://{}/", server.addr());
+    let text = Client::new().get(url).send().await?.text().await?;
+    assert_eq!(text, "hello");
+    Ok(())
 }
 ```
 
-An unknown id, or one whose feature is off, is an error that lists the ids you can use and the feature that enables each. The id can come from your
-settings instead of your code.
+Two different mistakes get two different messages, each ending with what to do. An id that does not exist: ``unknown adapter `nonexistent`: use one of ["hyper"]``
+(it lists the ids this build has). An id that exists but whose feature is off: ``adapter `axum` is not compiled in: enable the `axum` feature``.
+The id can come from your settings instead of your code.
 
 ## What you get
 
