@@ -1,4 +1,4 @@
-# Patent sweep: HTTPAnt (httpant, httpant-core, httpant-server, httpant-client; line 0.5.x) @ 2d8a670 (0.5.1); addendum @ 340e667 (0.5.2)
+# Patent sweep: HTTPAnt (httpant, httpant-core, httpant-server, httpant-client; line 0.5.x) @ 2d8a670 (0.5.1); addendum @ 340e667 (0.5.2); re-sweep @ 6d564a0 (0.5.22)
 
 Date: 2026-10-30; Run by: HTTPAnt lane, Claude Sonnet 5.5; Method: AI-assisted search and read (web search over Google Patents and Justia, then claims read with `tools/patent-claims.py`); **NOT legal advice; NOT a freedom-to-operate opinion.**
 
@@ -97,6 +97,63 @@ Hits read in this pass:
 
 Nothing in the second pass changes any verdict; no hit needs review. **Still not done:** a classification-code search (for example CPC H04L 67, H04L 9/32, G06F 11/36) on USPTO, EPO or WIPO; any pass by a person with the patent offices' own search interfaces; reading of the two URL-normalisation applications. The PM can accept the file as an honest record of a thin AI-assisted search, or ask for a person with those tools.
 
+## Re-sweep 2026-10-31 (at 6d564a0 = 0.5.22): HTTP/2, the ACME handlers, client https, the private-address guard
+
+**How it came about, in the order it happened.** The first sweep's own scope line (above) said that HTTP/2, the ACME challenge handler and a client TLS stack need a re-sweep. That re-sweep was not done before releases: **0.5.19 (the first real release, 2026-10-31) shipped HTTP/2 over TLS and cleartext h2c acceptance (0.5.12 to 0.5.14) and the `acme-tls/1` and HTTP-01 handlers (0.5.11 and earlier); 0.5.21 (client https) and 0.5.22 (the private-address guard) were published the same day**, all before this section existed. The PM acknowledged the miss on 2026-10-31 and asked for this re-sweep, bounded as below. This section records the order; it does not change it.
+
+Run by: HTTPAnt lane, Claude Sonnet 5.5, one session, no subagents. **NOT legal advice; NOT a freedom-to-operate opinion.** Verdict words here are `outside as read` (no independent claim reads on what HTTPAnt does; the element that is missing is named) and never `clear`: `outside as read` means "I read the claims and the mechanism differs", not "cleared".
+
+### Ideas swept in this pass (continuing the numbering above)
+
+11. A TLS acceptor owned by the library, below interchangeable web libraries, that offers HTTP/2 by ALPN only for adapters that declare they can serve it, and accepts cleartext HTTP/2 with prior knowledge as a per-adapter measured capability.
+12. Answering ACME validation inside the library: the HTTP-01 token path answered before routing, and TLS-ALPN-01 (`acme-tls/1`) answered in the TLS acceptor with a certificate from the pluggable certificate source.
+13. (Post-first-sweep, not one of the four families the PM named, included because it is published and uncovered: queried with two searches.) Redirecting port 80 to 443 only for an allow-listed host and answering `421` otherwise; audit events for a refused handshake and a certificate change; reading back the certificate a listener really serves.
+14. A client that verifies https against bundled roots with no switch to turn that off, proved by a conformance case that runs the client against test servers with an untrusted, a mis-named and a self-signed certificate, and by deliberately lenient verifiers (mutants) that must fail the case.
+15. A private-address guard in an HTTP client at three points: filtering the name lookup's answers, refusing an IP-literal host before connecting, and checking the address the connection really reached before TLS and before any request byte.
+
+### Queries (source, query, date)
+
+All 2026-10-31. Source for every query: the lane's general web search limited to `patents.google.com` and `patents.justia.com`. **Espacenet, PatentScope and the USPTO's own interface were not searched in this pass** (the PM bounded it to four families by three queries; ppubs pages appeared incidentally in some results). Twelve queries.
+
+| # | idea | query |
+|---|---|---|
+| C1 | 11 | patent HTTP/2 ALPN protocol negotiation TLS acceptor shared across multiple web server frameworks adapters |
+| C2 | 11 | patent cleartext HTTP/2 prior knowledge connection preface detection server accepts without TLS |
+| C3 | 11 | patent automated testing of HTTP/2 server implementations conformance suite protocol negotiation faulty implementation detection |
+| C4 | 12 | patent TLS-ALPN-01 acme-tls/1 validation handshake certificate challenge response server |
+| C5 | 12 | patent HTTP-01 challenge token well-known path web server automatic certificate issuance domain validation |
+| C6 | 13 | patent redirect HTTP request on port 80 to HTTPS only for allowed host names otherwise reject 421 misdirected |
+| C7 | 13 | patent TLS listener emits audit event on refused handshake and on certificate change; read back certificate actually served by listener |
+| C8 | 14 | patent HTTP client verifies server certificate against built-in trust anchors, verification cannot be disabled, hostname mismatch rejected handshake |
+| C9 | 14 | patent testing TLS client certificate validation using deliberately defective verifier accepts any certificate to show test fails |
+| C10 | 15 | patent server-side request forgery prevention resolve hostname block private internal IP address before connecting outbound request |
+| C11 | 15 | patent DNS rebinding protection pin resolved address filter DNS answer remove private addresses connect only to validated address |
+| C12 | 15 | patent verify peer address of established connection against blocked network ranges before sending request outbound proxy internal network access prevention |
+
+### Hits read (all independent claims, in full, with `tools/patent-claims.py`)
+
+| # | patent | title | assignee | status (Google Patents' estimate) | claims read | overlap | our difference | verdict |
+|---|---|---|---|---|---|---|---|---|
+| H13 | US11770460B2 | Method and system for sharing multi-protocol port, and server | Wangsu Science and Technology | Active (est. 2041) | 1, 12 (independent), 2 to 11, 13 to 18 | A listener that detects the protocol of a connection; claims 8 and 9 mention HTTP/2 chosen in the SSL handshake | Claims 1 and 12 require an RTMP listening structure written into a designated field of an HTTP listening structure, the RTMP listener set to an ignore state, and detection on a port shared by the two protocols (an Nginx module). HTTPAnt has no second protocol on the port, no listening structures, and negotiates `h2` by ALPN in its own acceptor | outside as read |
+| H14 | US10630758B2 | Method and system for fulfilling server push directives on an edge proxy | Radware | Active (est. 2036) | 1, 15 (independent), 2 to 14, 16 to 27 | HTTP/2 between an edge and a client | Both independent claims need a web accelerator outside a CDN issuing a PUSH resource designator to an edge proxy inside it; HTTPAnt has no CDN, accelerator or server push | outside as read |
+| H15 | US10506080B2 | Communication apparatus, communication system, information processing method, and storage medium | Canon | Active (est. 2036) | 1, 6, 7, 8 (independent), 2 to 5, 9 to 17 | Starting HTTP/2 on a connection without the HTTP/1.1 upgrade; claim 11 sends the HTTP/2 connection preface | A **client** that stores per-destination HTTP/2 setting information and skips the HTTP/1.1 exchange only if it has the settings stored for that destination. The HTTPAnt client speaks HTTP/1.1 only and keeps no such store; the server side merely accepts a preface (and on some adapters declines it) | outside as read |
+| H16 | US7970939B1 | Methods and systems for addressing DNS rebinding | Symantec / CA | Active (est. 2029) | 1, 12, 15 (independent), 2 to 11, 13, 14, 16 | Defending against a name that changes its address | Binds a domain to the first address it resolved to, stores a domain-name record and prohibits changing it until a request to leave the domain is detected (browser plug-in or kernel DNS proxy). HTTPAnt keeps no record, has no notion of leaving a domain, and removes private addresses from each lookup's answer | outside as read |
+| H17 | WO2014043228A1 | Domain name system rebinding attack protection | an individual | Ceased | 1, 16, 21 (independent), 2 to 15, 17 to 20, 22 to 30 | Same family of problem | Compares a subsequent DNS request's answer with an earlier answer for the same name (and the zone of each) and takes a protective action; HTTPAnt compares no two lookups | outside as read |
+| H18 | US8776238B2 | Verifying certificate use | IBM | Expired, fee (Google Patents lists est. 2031) | 1, 6, 11, 16, 21 (independent), 2 to 5, 7 to 10, 12 to 15, 17 to 20 | A test peer sends an invalid certificate to see whether the application continues the session, to find applications that do not verify; this is the closest in idea to case 14's test servers | Every independent claim needs a certificate use verification application working with a **proxy server** that intercepts a *second* message and performs correct certificate processing for it. The HTTPAnt suite is a test server and a client under test: no proxy, no interception, no correct processing on the client's behalf | outside as read |
+| H19 | US7797590B2 | Consensus testing of electronic system | Codenomicon / Black Duck | Active (est. 2029) | 1, 20, 21, 22 (independent), 2 to 19 | A conformance-style test of protocol implementations | Generates a verdict by comparing elements of traffic from tests of **several systems** and voting on the consensus. HTTPAnt's cases check each implementation against a stated requirement over real sockets, and prove the case can fail with a deliberately broken one; no comparison across systems | outside as read |
+| H20 | US20210266185A1 | Home or Enterprise Router-Based Secure Domain Name Services | McAfee | Active (est. 2041) | 1, 15, 19 (independent), 2 to 14, 16 to 18, 20 | Mentions an ACME client getting a certificate (claim 13) | A home router providing DoH or DoT with a provisioned certificate, rules per domain name; claim 13 is a dependent ACME client, which HTTPAnt does not contain (it answers challenges, it does not run an ACME client) | outside as read |
+| H21 | EP2154817A1 | Server certificate issuing system | GlobalSign | not stated in the page read | 1 (independent) and the dependent claims | A web server publishing a verification page that a registration server reads to confirm control (the idea behind HTTP-01) | A system of a registration server and an issuing authority generating a key pair, a CSR and the certificate, issuing only if the page is verified. HTTPAnt serves the token a certificate authority asks for through a handler the caller supplies; it issues nothing and generates no CSR | outside as read |
+
+No hit needs review. **Nothing in this pass reads inside.**
+
+### Seen in the results, not read
+
+US10110642 (Canon, the sibling of H15; same family of idea, not read), US5958052 (DNS proxy filtering private information, 1990s filing; not read), US20170063778A1 (an attacker technique using DNS rebinding), US9300687 (restricting private ranges, rebinding caveat), US6003084 (secure network proxy with an access control list), US10171452B2 and US9565180B2 (trusted-CA lists in clients), US20220046024A1 (a gateway pinning certificates). Listed so a reader can see what the searches returned; none was read, so no verdict is given on them.
+
+### What this pass did not find, and what that is worth
+
+No patent surfaced for: server-side detection of the cleartext HTTP/2 preface; `acme-tls/1` validation in a TLS handshake; the `421` host allow-list redirect; a listener reading back its own served certificate; a check of the connected peer address before TLS. **An absence of search hits is weak evidence.** Twelve queries through a general web search limited to two patent sites, each returning about ten pages, cannot show absence; they show only that nothing close came back.
+
 ## Limitations
 
-AI-assisted due-diligence read; not legal advice; not a freedom-to-operate opinion. Ten queries through a general web search that returns a handful of Google Patents and Justia pages each, so coverage of the patent literature is thin and an absence of hits is weak evidence. Seven patents had their claims read; the machine-converted claim text should be checked against the official record before any quote is relied on. Status and expiry are Google Patents' estimates. The sweep describes the code at `2d8a670`; adapters for libraries other than the six in tree, HTTP/2, and an ACME or client TLS stack are outside it.
+AI-assisted due-diligence read; not legal advice; not a freedom-to-operate opinion. Ten queries through a general web search that returns a handful of Google Patents and Justia pages each, so coverage of the patent literature is thin and an absence of hits is weak evidence. Seven patents had their claims read; the machine-converted claim text should be checked against the official record before any quote is relied on. Status and expiry are Google Patents' estimates. The first two passes describe the code at `2d8a670`/`340e667`; the re-sweep section above covers HTTP/2, the ACME handlers, client https and the private-address guard at `6d564a0` with twelve more queries and nine more patents read. Still outside every pass: adapters for libraries other than the six in tree, client slice 3 (OS root store, proxy, opt-in redirects, not built), and any classification-code search or search by a person with the patent offices' own tools.
