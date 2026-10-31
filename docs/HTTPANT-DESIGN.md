@@ -205,8 +205,27 @@ framework's own native middleware is not used; that is intended (agnosticism ove
 
 ## 10. Ant-first
 
-- **ConfigurAnt:** adapter id, bind address, body and header limits, timeouts come from settings; the builder takes a `ServerConfig` that ConfigurAnt can fill.
-  ConfigurAnt is at 0.5.4 (PM message); how its API looks is UNVERIFIED and I will read it before slice 1.
+- **ConfigurAnt:** adapter id, bind address, body and header limits, timeouts come from settings. **Read 2026-10-31 at ConfigurAnt `origin/main`
+  `bb7545e` (0.6.1; crates.io has 0.5.43), the README, `Cargo.toml`, `src/lib.rs`, `src/config.rs`, `src/value.rs` and `src/modules/ports.rs`; nothing
+  was run.** What the API is: a schema in `configurant.toml` (`key`, `type`, `default`, `min`, `max`, `choices`, `env`, `flag`, `secret`, ...);
+  `Loader::new(&schema).build()` layers default < file < environment < command line; `config.get::<T>("server.port")` reads one value; and
+  **`config.deserialize::<T>()` binds the winning values to any `#[derive(Deserialize)]` struct of the caller's, by dotted key** (`server.port` is the
+  field `port` of the field `server`). Value types are string, int, float, bool, path, enum, list, table and map: **there is no duration type**, so a
+  timeout is an int with its unit in the key name. A `ports` module (feature `ports`) validates a port or `host:port` lexically.
+  What follows for HTTPAnt, as a recommendation for the PM (not built):
+  1. **HTTPAnt does not depend on ConfigurAnt.** `deserialize` takes the caller's own struct, so HTTPAnt can offer a plain serde-deserializable
+     settings struct and ConfigurAnt fills it with no link between the crates. This reverses the earlier sketch ("the builder takes a `ServerConfig`
+     that ConfigurAnt can fill" stays true, but nothing needs a dependency). A dependency would also cost every HTTPAnt user: ConfigurAnt's
+     `rust-version` is **1.95** against HTTPAnt's 1.88, and its default dependencies include `clap`, `sha2` and `toml`.
+  2. The shape would be a struct such as `ServerSettings { adapter: Option<String>, addr: Option<String>, shutdown_grace_secs: Option<u64>,
+     limits: LimitsSettings { max_target_bytes, max_headers, max_header_bytes, max_body_bytes } }` (every field optional so the defaults of
+     `Limits` stay the defaults) with `Server::apply(&settings)`, behind no new feature (`httpant-core` takes `serde` in the extractors PR, #48, 0.5.28), and
+     an example schema in `docs/` that a test parses with the same field names so the two cannot drift (the schema is a TOML file; the test would
+     parse it with `toml` as a dev-dependency, still not ConfigurAnt).
+  3. Open and not decided here: unit naming for timeouts (`_secs` or `_ms`), whether the client half gets the same (`Client::builder()` timeouts and
+     `refuse_private_addresses`), and whether TLS belongs in settings at all (a certificate source is code, not a value; only paths could be).
+  4. Not checked: that a ConfigurAnt `deserialize` into such a struct works end to end (nothing was compiled against it), and whether ConfigurAnt's
+     schema rejects a field name HTTPAnt would choose. Both are the first thing a build of item 2 would show.
 - **PersistAnt/CapAnt:** no use identified in the HTTP layer. Not forced in.
 - **Other Ants (0.0.0 placeholders):** not depended on; a trait is stubbed where a seam exists (TLS acceptor above, `Settings` source) and the stub is labelled.
 
