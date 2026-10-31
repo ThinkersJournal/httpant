@@ -151,3 +151,40 @@ pub fn http2_alpn(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
         outcome
     })
 }
+
+/// Cleartext HTTP/2 by prior knowledge (h2c), a probe and not a requirement: nothing in the need list asks for it, so an adapter either
+/// answers the HTTP/2 connection preface on a cleartext listener with HTTP/2 (`Yes`) or does not (`No`: it answers in HTTP/1.1 text, closes,
+/// or says nothing). Measured so the capability matrix can show the difference between adapters as it is.
+pub async fn h2c_support(s: &dyn Subject) -> Support {
+    // The client preface, then an empty SETTINGS frame, which is what an HTTP/2 client sends first.
+    const PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+    const EMPTY_SETTINGS: &[u8] = &[0, 0, 0, 4, 0, 0, 0, 0, 0];
+    let (app, _gates) = app::app_with_gates();
+    let server = match s.start(app).await {
+        Ok(server) => server,
+        Err(e) => {
+            eprintln!("capability probe `h2c` could not start {}: {e}", s.name());
+            return Support::No;
+        }
+    };
+    let seen = async {
+        let mut tcp = TcpStream::connect(server.addr()).await.ok()?;
+        tcp.write_all(PREFACE).await.ok()?;
+        tcp.write_all(EMPTY_SETTINGS).await.ok()?;
+        let mut got = [0u8; 16];
+        let n = tokio::time::timeout(WAIT, tcp.read(&mut got))
+            .await
+            .ok()?
+            .ok()?;
+        Some(got[..n].to_vec())
+    }
+    .await;
+    let _ = server.shutdown().await;
+    match seen {
+        // An HTTP/2 server's first frame is its SETTINGS frame: 3 bytes of length, then the type 4.
+        Some(bytes) if bytes.len() >= 4 && bytes[3] == 4 && !bytes.starts_with(b"HTTP/") => {
+            Support::Yes
+        }
+        _ => Support::No,
+    }
+}
