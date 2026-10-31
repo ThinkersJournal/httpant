@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.23] - 2026-10-31
+
+- Documentation only: ROADMAP row 12 (the once-seen failure of `the_whole_suite_passes_on_every_adapter`) now records the measurement asked for: 40 consecutive runs of that test under 32 saturating CPU-bound processes on a 32-core Windows machine at `6d564a0`, all passed, 33 s to 45 s each. Not reproduced, and not claimed fixed; the row stays on watch, and the test's failure message already names the adapter and the failing cases. No code changed. Not published.
+
 ## [0.5.22] - 2026-10-31
 
 - **The client's private-address guard (slice 2 of the client-https design; WebHostAnt need 10).** `Client::builder().refuse_private_addresses(true)` (off by default) makes the client refuse, with the new `Error::PrivateAddress`, to connect to loopback, private-network, link-local (the cloud metadata address 169.254.169.254 among them), carrier-grade-NAT, multicast, documentation and reserved addresses. It is checked on the address actually connected to, in three places: the name lookup keeps only public answers (so a name that resolves to a private address, or to a public and a private one, gets no private address to try and there is no second lookup to change), an IP literal in the URL is refused before connecting (hyper-util never sends a literal to the resolver), and the connection is looked at once more after it is made, before TLS and before any request byte. An IPv4 address inside an IPv6 one (`::ffff:10.0.0.1`, NAT64 `64:ff9b::/96`, 6to4 `2002::/16`) is judged as the IPv4 address. With the guard off both wrappers pass everything through, so there is one connector path, not a guarded and an unguarded one. A followed redirect (not built yet) would go through the same connector. Through a proxy (not built yet) the address reached would be the proxy's, which the proxy slice must say.
