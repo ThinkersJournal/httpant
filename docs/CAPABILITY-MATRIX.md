@@ -10,7 +10,7 @@ rewrites it. Each adapter's `capabilities()` is compared with the measurement by
 |---|---|---|---|---|---|---|---|---|
 | hyper | yes | yes | yes | no | yes | yes | no | 2097152 |
 | axum | yes | yes | yes | no | yes | yes | yes | 2097152 |
-| actix-web | yes | yes | yes | no | no | no | no | 2097152 |
+| actix-web | yes | yes | yes | no | yes | no | no | 2097152 |
 | poem | yes | yes | yes | no | yes | yes | yes | 2097152 |
 | salvo | yes | yes | yes | no | yes | yes | yes | 2097152 |
 | warp | yes | yes | yes | no | no | no | yes | 2097152 |
@@ -32,14 +32,15 @@ Client adapters, measured by the client cases against a raw-TCP peer (`client_su
   connections are refused, and `shutdown()` returns only after the request completed. There is no grace period yet.
 - *terminates TLS*: declared, and held to its declaration by case 17. For `yes` the case proves HTTPS on TLS 1.3 and 1.2 with the given
   certificate, the request reported as `https`, and a cleartext client getting no answer; for `no` it requires a named refusal to start with
-  a TLS acceptor, so TLS that was asked for is never served in clear. The two `no` rows were probed (`docs/TLS-ADAPTER-PROBES.md`): warp's
-  `Accept` trait is private (run: it does not compile from outside), and actix-web, run as a spike (`spike/actix-tls`), can be bridged only by
-  blocking its single-threaded worker while the certificate source answers (a fast handshake took 2035 ms behind six slow ones, against 7 ms
-  on hyper and axum) and without HTTPAnt's audit events, so both stay edge mode only.
+  a TLS acceptor, so TLS that was asked for is never served in clear. The one `no` row was probed (`docs/TLS-ADAPTER-PROBES.md`): warp's
+  `Accept` trait is private (run: it does not compile from outside), so it stays edge mode only. actix-web was `no` until 0.5.25: through its own
+  rustls support it could be bridged only by blocking its single-threaded worker while the certificate source answers (a fast handshake took
+  2035 ms behind six slow ones, against 7 ms on hyper and axum), so it now takes HTTPAnt's own acceptor and `actix_http::HttpService` instead
+  (one actix thread for TLS; `tests/tls_isolation.rs` holds the property on every TLS adapter).
 - *HTTP/2 (over TLS)*: declared (needs the `http2` feature of `httpant-server`), and held to its declaration by case 18. A TLS listener
   offers `h2` only if the adapter serves it. For `yes` the case proves a client offering `h2` and `http/1.1` is given `h2` and answered over
-  HTTP/2 with the request reported as `https`; for `no` with TLS `yes` (no adapter today: every adapter that terminates TLS serves HTTP/2) it
-  proves the client is given `http/1.1`, never an `h2` the adapter cannot serve. The `no` rows (actix-web, warp) do not terminate TLS.
+  HTTP/2 with the request reported as `https`; for `no` with TLS `yes` (actix-web, since 0.5.25: its HTTP/2 is the `h2` 0.3 line, which `cargo deny` fails on with RUSTSEC-2026-0258) it
+  proves the client is given `http/1.1`, never an `h2` the adapter cannot serve. warp does not terminate TLS.
 - *cleartext h2c (measured)*: a probe, **not a requirement** (nothing in the need list asks for it) and **not uniform**, shown as it is. The
   probe sends the HTTP/2 connection preface and an empty SETTINGS frame to a cleartext listener and reads what comes back: `yes` is an HTTP/2
   SETTINGS frame (the adapter's connection builder accepts h2c by prior knowledge), `no` is HTTP/1.1 text, a closed connection or silence.

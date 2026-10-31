@@ -18,11 +18,13 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 
-/// Every adapter that terminates TLS (declares `tls: Yes`); actix-web and warp refuse it, which `an_adapter_that_cannot_terminate_tls...` covers.
+/// Every adapter that terminates TLS (declares `tls: Yes`); warp refuses it, which `an_adapter_that_cannot_terminate_tls...` covers.
 const ADAPTERS: &[&str] = &[
     "hyper",
     #[cfg(feature = "axum")]
     "axum",
+    #[cfg(feature = "actix-web")]
+    "actix-web",
     #[cfg(feature = "poem")]
     "poem",
     #[cfg(feature = "salvo")]
@@ -346,8 +348,9 @@ async fn read_back_reports_the_certificate_the_listener_really_serves() {
             .unwrap()
             .as_secs() as i64;
         assert!(first.not_before <= now && first.not_after > now, "{id}");
-        // The probe offers `h2` and `http/1.1`; an adapter that serves HTTP/2 (with the `http2` feature) is read back as `h2`.
-        let expected = if cfg!(feature = "http2") {
+        // The probe offers `h2` and `http/1.1`; an adapter that serves HTTP/2 (with the `http2` feature) is read back as `h2`. actix-web never
+        // offers `h2` (its HTTP/2 is the `h2` 0.3 line, which has an advisory), so it is read back as `http/1.1`.
+        let expected = if cfg!(feature = "http2") && *id != "actix-web" {
             "h2"
         } else {
             "http/1.1"

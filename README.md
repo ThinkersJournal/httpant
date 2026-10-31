@@ -86,10 +86,10 @@ so the same program behaves the same on each. What each one does, as measured an
   roots plus any CA you add with `add_root_pem`, the certificate and the host name verified, and no switch to turn that off. **rustls does not check
   certificate revocation**, so a certificate that was revoked but has not expired is still accepted. Without the feature an `https://` URL is an error
   that names it. The client follows no redirects and uses no proxy. For a URL someone else chose (a health probe), `Client::builder().refuse_private_addresses(true)` refuses loopback, private-network, link-local (the cloud metadata address) and other non-public addresses, judged on the address actually connected to.
-- TLS termination is in hyper, axum, poem and salvo; actix-web and warp serve behind an edge that terminates it, and refuse a TLS acceptor by name
+- TLS termination is in hyper, axum, actix-web, poem and salvo; warp serves behind an edge that terminates it, and refuses a TLS acceptor by name
   instead of serving in clear. rocket is not supported: it answers an unknown method such as `PROPFIND` with `400` before a route is tried
   ([measured](https://github.com/ThinkersJournal/httpant/blob/main/docs/ROCKET-PROBE.md)).
-- Cleartext HTTP/2 is not uniform across the libraries (the matrix shows which accept it).
+- Cleartext HTTP/2 is not uniform across the libraries (the matrix shows which accept it). actix-web terminates TLS but speaks HTTP/1.1 only: its HTTP/2 is the `h2` 0.3 line, which has an advisory with no fix in that line (RUSTSEC-2026-0258).
 
 ## Status
 
