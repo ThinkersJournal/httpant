@@ -27,6 +27,9 @@ pub struct Capabilities {
     pub local_handlers: Support,
     /// Terminates TLS on the listener using a certificate source (feature `tls`). An adapter that says `No` is refused a TLS request at start-up, never served in clear.
     pub tls: Support,
+    /// Serves HTTP/2 on TLS listeners, negotiated by ALPN `h2` (feature `http2` of `httpant-server`). An adapter that says `No` never offers `h2`, so
+    /// a client always gets HTTP/1.1 from it.
+    pub http2: Support,
     /// The body limit the adapter applies unless told otherwise, in bytes.
     pub default_body_limit: usize,
 }
@@ -39,6 +42,7 @@ impl Default for Capabilities {
             graceful_shutdown: Support::Unknown,
             local_handlers: Support::Unknown,
             tls: Support::Unknown,
+            http2: Support::Unknown,
             default_body_limit: DEFAULT_BODY_LIMIT,
         }
     }

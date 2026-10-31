@@ -145,14 +145,15 @@ impl ResolvesServerCert for One {
     }
 }
 
-/// Terminates TLS on accepted connections with certificates from a [`CertSource`]. TLS 1.3 and 1.2 only (rustls offers nothing older), ALPN
-/// `http/1.1` (the adapters speak HTTP/1.1 only; `h2` waits for them).
+/// Terminates TLS on accepted connections with certificates from a [`CertSource`]. TLS 1.3 and 1.2 only (rustls offers nothing older). ALPN
+/// offers `http/1.1` unless an adapter that serves HTTP/2 widens it (see [`TlsAcceptor::alpn_protocols`]).
 #[derive(Clone)]
 pub struct TlsAcceptor {
     source: Arc<dyn CertSource>,
     handshake_timeout: Duration,
     audit: Option<Arc<dyn TlsAudit>>,
     served: Arc<Served>,
+    alpn: Arc<[Vec<u8>]>,
 }
 
 impl fmt::Debug for TlsAcceptor {
@@ -171,7 +172,16 @@ impl TlsAcceptor {
             handshake_timeout: DEFAULT_HANDSHAKE_TIMEOUT,
             audit: None,
             served: Arc::default(),
+            alpn: Arc::from([b"http/1.1".to_vec()]),
         }
+    }
+
+    /// The ALPN protocols to offer, most preferred first (default: `http/1.1`). **An adapter sets this to what it really serves**, `h2` first
+    /// only if it speaks HTTP/2 (feature `http2`); a protocol offered but not served breaks every connection that picks it. Conformance case 18
+    /// holds each adapter to this.
+    pub fn alpn_protocols(mut self, protocols: &[&[u8]]) -> Self {
+        self.alpn = protocols.iter().map(|p| p.to_vec()).collect();
+        self
     }
 
     /// Report [`TlsEvent`]s (refused handshakes, a changed certificate) to `sink`, for the audit trail.
@@ -213,7 +223,7 @@ impl TlsAcceptor {
                 .is_some_and(|mut p| p.any(|p| p == ACME_TLS_ALPN));
             if offers_acme && let Some(challenge) = self.source.acme_tls_cert(name.as_deref()).await
             {
-                let config = config_for(&challenge, ACME_TLS_ALPN)
+                let config = config_for(&challenge, &[ACME_TLS_ALPN.to_vec()])
                     .map_err(|e| (RefusalReason::Protocol, e))?;
                 let mut stream = start
                     .into_stream(Arc::new(config))
@@ -231,8 +241,7 @@ impl TlsAcceptor {
                 }
                 Err(e) => return Err((RefusalReason::SourceFailed, io::Error::other(e))),
             };
-            let config =
-                config_for(&cert, b"http/1.1").map_err(|e| (RefusalReason::Protocol, e))?;
+            let config = config_for(&cert, &self.alpn).map_err(|e| (RefusalReason::Protocol, e))?;
             let stream = start
                 .into_stream(Arc::new(config))
                 .await
@@ -290,13 +299,13 @@ impl TlsAcceptor {
 /// The ALPN protocol of a TLS-ALPN-01 validation connection (RFC 8737).
 const ACME_TLS_ALPN: &[u8] = b"acme-tls/1";
 
-fn config_for(cert: &ServerCert, alpn: &[u8]) -> io::Result<ServerConfig> {
+fn config_for(cert: &ServerCert, alpn: &[Vec<u8>]) -> io::Result<ServerConfig> {
     let mut config = ServerConfig::builder_with_provider(Arc::new(provider::default_provider()))
         .with_protocol_versions(&[&version::TLS13, &version::TLS12])
         .map_err(io::Error::other)?
         .with_no_client_auth()
         .with_cert_resolver(Arc::new(One(Arc::clone(&cert.certified))));
-    config.alpn_protocols = vec![alpn.to_vec()];
+    config.alpn_protocols = alpn.to_vec();
     Ok(config)
 }
 
@@ -342,8 +351,8 @@ pub async fn read_back(
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(AcceptAnything(provider)))
         .with_no_client_auth();
-    // Offer what the server offers, so the ALPN it would choose is visible.
-    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    // Offer both, so the ALPN the server would choose is visible.
+    config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     let probe = async {
         let tcp = TcpStream::connect(addr).await?;
         let tls = tokio_rustls::TlsConnector::from(Arc::new(config))
