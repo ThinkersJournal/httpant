@@ -21,11 +21,11 @@ Client adapters, measured by the client cases against a raw-TCP peer (`client_su
 <!-- client-matrix:start -->
 | client adapter | streaming request bodies | streaming response bodies | connection reuse | follows redirects | TLS | default body limit (bytes) |
 |---|---|---|---|---|---|---|
-| hyper | yes | yes | yes | no | no | 2097152 |
+| hyper | yes | yes | yes | no | yes | 2097152 |
 <!-- client-matrix:end -->
 
 - *connection reuse*: client case 7 (two requests to one host, one connection). *follows redirects*: a probe, not a requirement; an adapter either
-  follows a `302` or returns it as it is, and half-following is an error. *TLS*: declared, not measured (the reference client has no TLS connector yet).
+  follows a `302` or returns it as it is, and half-following is an error. *TLS*: measured by client case 8 against a TLS peer written in the suite (a trusted certificate is fetched; an untrusted one, one for another host name and a self-signed one with no extra root are refused before anything is sent). It is `yes` only when the `https` feature is on, which the suite builds with.
 - *streaming request bodies* / *streaming response bodies* (server): conformance case 8. The first chunk crosses the connection while the other side is still
   producing (response) or sending (request); gated by handler signals, not by sleeps.
 - *graceful shutdown*: case 9. After shutdown is requested: a request in flight completes, an idle keep-alive connection is closed, new

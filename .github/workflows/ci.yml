@@ -44,6 +44,11 @@ jobs:
       - name: httpant-server alone (hyper only, no optional adapters)
         run: cargo test --locked -p httpant-server --lib
 
+      - name: httpant-client alone, without and with https (the feature must not change what the default build does)
+        run: |
+          cargo test --locked -p httpant-client --lib
+          cargo test --locked -p httpant-client --lib --features https
+
       - name: hello-world example, run in CI
         run: cargo run --locked --example server_hello -p httpant-server
 
@@ -85,6 +90,9 @@ jobs:
 
       - name: cargo check on the minimum version
         run: cargo check --locked -p httpant -p httpant-core -p httpant-server -p httpant-client --all-targets
+
+      - name: cargo check on the minimum version, https on
+        run: cargo check --locked -p httpant -p httpant-client --features httpant/https,httpant-client/https --all-targets
 
   deny:
     name: cargo deny (advisories, licences, bans, sources)

@@ -76,12 +76,16 @@ so the same program behaves the same on each. What each one does, as measured an
 - **TLS in the server** (feature `tls`, rustls): certificates come from a `CertSource` you provide, asked once per handshake, so a renewed certificate
   serves the next connection with no restart. HTTP/2 over TLS (feature `http2`), the ACME HTTP-01 and TLS-ALPN-01 hooks, a port-80 redirect, audit
   events and a read-back of what a listener really serves are there too. HTTPAnt does not do ACME, storage or renewal: that is the source's job.
-- **A client half** with the same shape: `Client::new().get(url).send().await?`.
+- **A client half** with the same shape: `Client::new().get(url).send().await?`. `Client::builder()` sets the connect, request and read timeouts
+  (all finite by default); `.bearer(token)` keeps the token out of `Debug` and out of every error, as does the query string of a URL.
 
 ## What it does not do (yet)
 
 - It is not a web framework: no ORM, auth, sessions or templating.
-- The client speaks plain `http://`; an `https://` URL is an error that says so.
+- The client calls `https://` only with the `https` feature (`cargo add httpant --features https`): rustls, TLS 1.2 and 1.3, the bundled Mozilla
+  roots plus any CA you add with `add_root_pem`, the certificate and the host name verified, and no switch to turn that off. **rustls does not check
+  certificate revocation**, so a certificate that was revoked but has not expired is still accepted. Without the feature an `https://` URL is an error
+  that names it. The client follows no redirects, uses no proxy, and has no private-address guard yet.
 - TLS termination is in hyper, axum, poem and salvo; actix-web and warp serve behind an edge that terminates it, and refuse a TLS acceptor by name
   instead of serving in clear. rocket is not supported: it answers an unknown method such as `PROPFIND` with `400` before a route is tried
   ([measured](https://github.com/ThinkersJournal/httpant/blob/main/docs/ROCKET-PROBE.md)).
