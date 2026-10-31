@@ -53,5 +53,5 @@ work the real blockers were G1 (no `httpant` crate), G2 (no hello-world in the R
 repository).
 
 **Honest limits the README states** (so the first release is not oversold): the client speaks plain `http://` only; TLS termination is in hyper,
-axum, poem and salvo (actix-web and warp serve behind an edge); rocket is not supported (measured); cleartext HTTP/2 is not uniform across the
+axum, actix-web, poem and salvo (warp serves behind an edge); rocket is not supported (measured); cleartext HTTP/2 is not uniform across the
 libraries; the optional adapters can need a newer compiler than the default build.

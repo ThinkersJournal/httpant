@@ -41,9 +41,15 @@ impl ServerAdapter for ActixAdapter {
         c.graceful_shutdown = Support::Yes;
         // Handlers are `Send` futures; a handler written against actix's `!Send` types is the later `LocalHandler` capability.
         c.local_handlers = Support::No;
-        // HTTPAnt terminates TLS below the adapters only where the web library accepts an already-handshaken stream; this one is edge mode only.
-        c.tls = Support::No;
-        // These adapters serve HTTP/1.1 only until their HTTP/2 slice; they never offer `h2` (conformance case 18).
+        // HTTPAnt's own acceptor runs the handshake and hands the finished stream to `actix_http::HttpService` (`actix_tls.rs`); proved by case 17.
+        c.tls = if cfg!(feature = "tls") {
+            Support::Yes
+        } else {
+            Support::No
+        };
+        // HTTP/1.1 only, on purpose: actix-http's HTTP/2 is the `h2` 0.3 line, which has an advisory with no 0.3 fix (RUSTSEC-2026-0258, empty DATA
+        // frames queued without limit; patched only in h2 0.4.16), and `cargo deny` fails on it. So `h2` is never offered on this adapter's TLS
+        // listener (conformance case 18 holds that: a client offering `h2` is given `http/1.1`).
         c.http2 = Support::No;
         c
     }
@@ -52,6 +58,10 @@ impl ServerAdapter for ActixAdapter {
         Box::pin(async move {
             let grace = opts.grace();
             let svc = opts.wrap(svc);
+            #[cfg(feature = "tls")]
+            if let Some(tls) = opts.tls.clone() {
+                return crate::actix_tls::serve(svc, opts.listener, tls, grace).await;
+            }
             let addr = opts.listener.local_addr()?;
             let listener = opts.listener;
             let (handle_tx, handle_rx) = oneshot::channel::<std::io::Result<ServerHandle>>();
@@ -64,7 +74,7 @@ impl ServerAdapter for ActixAdapter {
                             let svc = svc.clone();
                             App::new().default_service(web::to(
                                 move |req: HttpRequest, payload: web::Payload| {
-                                    handle(svc.clone(), req, payload)
+                                    handle(svc.clone(), req, payload, None)
                                 },
                             ))
                         })
@@ -100,12 +110,28 @@ impl ServerAdapter for ActixAdapter {
     }
 }
 
-async fn handle(svc: BoxService, req: HttpRequest, payload: web::Payload) -> HttpResponse {
+/// `guard` (TLS serving only) is held until the response body has been written, so shutdown can wait for exactly the requests in flight.
+#[cfg(feature = "tls")]
+type Guard = Option<crate::actix_tls::InFlightGuard>;
+#[cfg(not(feature = "tls"))]
+type Guard = Option<()>;
+
+pub(crate) async fn handle(
+    svc: BoxService,
+    req: HttpRequest,
+    payload: web::Payload,
+    guard: Guard,
+) -> HttpResponse {
     let Ok(mut request) = to_request(&req, payload) else {
         return HttpResponse::BadRequest().finish();
     };
     if let Some(peer) = req.peer_addr() {
         request.extensions_mut().insert(crate::PeerAddr(peer));
+    }
+    #[cfg(feature = "tls")]
+    if guard.is_some() {
+        // Only the TLS path passes a guard, and it only serves connections this server terminated TLS on.
+        request.extensions_mut().insert(crate::TlsConnection);
     }
     let res = svc
         .oneshot(request)
@@ -128,14 +154,16 @@ async fn handle(svc: BoxService, req: HttpRequest, payload: web::Payload) -> Htt
             out.append_header((n, v));
         }
     }
-    let stream = futures_util::stream::unfold(body, |mut body| async move {
+    let stream = futures_util::stream::unfold((body, guard), |(mut body, guard)| async move {
         loop {
             match body.frame().await? {
                 Ok(frame) => match frame.into_data() {
-                    Ok(data) => return Some((Ok::<_, Box<dyn std::error::Error>>(data), body)),
+                    Ok(data) => {
+                        return Some((Ok::<_, Box<dyn std::error::Error>>(data), (body, guard)));
+                    }
                     Err(_) => continue,
                 },
-                Err(e) => return Some((Err(e as Box<dyn std::error::Error>), body)),
+                Err(e) => return Some((Err(e as Box<dyn std::error::Error>), (body, guard))),
             }
         }
     });

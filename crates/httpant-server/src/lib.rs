@@ -4,6 +4,8 @@
 
 #[cfg(feature = "actix-web")]
 mod actix_adapter;
+#[cfg(all(feature = "actix-web", feature = "tls"))]
+mod actix_tls;
 mod adapter;
 #[cfg(feature = "axum")]
 mod axum_adapter;
