@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! HTTPAnt: serve HTTP and call HTTP once, on the web library you choose.
-//!
-//! This crate is a thin facade over `httpant-core`, `httpant-server` and `httpant-client`. See `examples/hello.rs` for the smallest program.
+#![doc = include_str!("../README.md")]
 
 /// The server half in full (adapters, limits, edge mode, TLS), for what the top level does not re-export.
 pub use httpant_server as server;

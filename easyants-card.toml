@@ -1,0 +1,10 @@
+# The EasyAnts hub card (easyants docs/CARD-FORMAT.md). The hub reads this file and the example from this repository on every build; nothing here is
+# retyped there. The hub registry entry gets `repo` and `card = "required"` only at the first release.
+name = "HTTPAnt"
+sentence = "Serve HTTP and call HTTP once, on the web library you choose."
+status = "ready"
+install_url = "https://crates.io/crates/httpant"
+install_snippet = "cargo add httpant"
+docs = "https://github.com/ThinkersJournal/httpant"
+example_path = "examples/hello.rs"
+example_lines = [2, 11]
