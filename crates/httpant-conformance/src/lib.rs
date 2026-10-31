@@ -131,7 +131,11 @@ pub const CASES: [Case; 18] = [
         number: 10,
         id: "connection-handling",
         requirement: "two requests share one connection; `Connection: close` is honoured; `Expect: 100-continue` gets `100 Continue` before the body is sent",
-        mutants: &[Mutant::ForceConnectionClose],
+        mutants: &[
+            Mutant::ForceConnectionClose,
+            Mutant::IgnoreConnectionClose,
+            Mutant::SkipExpectContinue,
+        ],
         run: live::connection_handling,
     },
     Case {
@@ -303,6 +307,23 @@ mod tests {
     case_test!(case_8_streaming, 7);
     case_test!(case_9_graceful_shutdown, 8);
     case_test!(case_10_connection_handling, 9);
+
+    /// A mutant that fails case 10 for some other reason (a hang somewhere unrelated) would prove nothing about the part it stands for.
+    #[tokio::test]
+    async fn the_case_10_mutants_fail_for_their_own_reason() {
+        let case = &CASES[9];
+        let why = |m| async move { case.run(&MutantSubject(m)).await.unwrap_err() };
+        let e = why(Mutant::ForceConnectionClose).await;
+        assert!(e.contains("request 2 on one connection"), "{e}");
+        let e = why(Mutant::IgnoreConnectionClose).await;
+        assert!(
+            e.contains("kept the connection open after `Connection: close`"),
+            "{e}"
+        );
+        let e = why(Mutant::SkipExpectContinue).await;
+        assert!(e.contains("`100 Continue` before the body was sent"), "{e}");
+    }
+
     case_test!(case_11_concurrency, 10);
     case_test!(case_12_head, 11);
     case_test!(case_13_path_encoding, 12);

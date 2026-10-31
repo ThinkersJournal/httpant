@@ -12,7 +12,7 @@ Status: `next` (do now, in this order), `later`, `blocked` (needs a decision or 
 | 5 | Benchmark harness (adapter vs the bare framework) | later | Last. `docs/BENCHMARKS.md` has the TechEmpower reading to compare against. |
 | 6 | **Run rocket**: an unsupported-method probe (PROPFIND) against a real rocket 0.5.x | later | Turns "source reading, not run" (CHANGELOG 0.1.9, design section 8) into a measurement. If it answers 400 as the source says, rocket stays out and the design row says "measured". |
 | 7 | `Path`/`Query` extractors | later | Typed access to `PathParams` and the query string. |
-| 8 | Mutant for `Connection: close` / `Expect: 100-continue` (case 10 has only a keep-alive mutant) | later | Both are decided below the service, so the mutant has to live in a subject. |
+| 8 | Mutant for `Connection: close` / `Expect: 100-continue` (case 10 had only a keep-alive mutant) | done | 0.5.16: `ignore-connection-close` and `skip-expect-continue`, subjects that strip the header line below the HTTP/1.1 layer (`mutants::serve_stripping`); each fails case 10 with its own message (tested). |
 | 9 | `LocalHandler` capability (non-`Send` handlers, actix) | later | Compile-time or startup error elsewhere, never a silent downgrade. |
 | 10 | Read ConfigurAnt's API before wiring settings | later | Design section 10; UNVERIFIED. |
 | 11 | Replace `PATENT-SWEEP.md` with a real sweep | done (PM to accept) | First sweep of the 0.5.x line at 2d8a670, 7 patents read, none needs review; coverage thin (one pass of web search, no boolean database search): see its Limitations. Re-sweep for h2, ACME handler, client TLS. |
