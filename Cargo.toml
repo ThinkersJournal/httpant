@@ -50,7 +50,7 @@ default-members = [".", "crates/httpant-core", "crates/httpant-server", "crates/
 
 [workspace.package]
 # One number for every crate in the project (portfolio rule). 0.1.0: a new line, not a continuation of web-server-abstraction 1.0.x.
-version = "0.5.28"
+version = "0.5.29"
 edition = "2024"
 # The default build (hyper only, no optional adapter). Measured on 1.88 and kept by the `msrv` job in CI; the optional adapters can need more:
 # actix-web 1.89, salvo 1.94 and, through its dependencies, 1.95 with every feature on (cargo names the package that asks).
@@ -74,9 +74,9 @@ salvo_core = { version = "1", default-features = false }
 warp = { version = "0.4", default-features = false }
 hyper = { version = "1", default-features = false }
 hyper-util = { version = "0.1", default-features = false }
-httpant-core = { path = "crates/httpant-core", version = "0.5.28" }
-httpant-server = { path = "crates/httpant-server", version = "0.5.28" }
-httpant-client = { path = "crates/httpant-client", version = "0.5.28" }
+httpant-core = { path = "crates/httpant-core", version = "0.5.29" }
+httpant-server = { path = "crates/httpant-server", version = "0.5.29" }
+httpant-client = { path = "crates/httpant-client", version = "0.5.29" }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 # Client https: hyper-rustls on the same rustls and ring as the server; roots bundled (webpki-roots), never read from the machine unless asked.
 hyper-rustls = { version = "0.27", default-features = false, features = ["ring", "http1", "tls12"] }
