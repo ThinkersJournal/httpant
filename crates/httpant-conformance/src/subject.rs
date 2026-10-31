@@ -155,6 +155,12 @@ impl Subject for MutantSubject {
             if self.0 == Mutant::AbortOnShutdown {
                 return mutants::serve_aborting(svc, free_listener()?);
             }
+            if self.0 == Mutant::IgnoreConnectionClose {
+                return mutants::serve_stripping(svc, free_listener()?, &["connection: close"]);
+            }
+            if self.0 == Mutant::SkipExpectContinue {
+                return mutants::serve_stripping(svc, free_listener()?, &["expect: 100-continue"]);
+            }
             if self.0 == Mutant::OffersH2WithoutServingIt {
                 return mutants::serve_http1_only_behind_h2_offer(
                     svc,

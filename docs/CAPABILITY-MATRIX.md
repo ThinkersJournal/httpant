@@ -51,5 +51,7 @@ Client adapters, measured by the client cases against a raw-TCP peer (`client_su
   column is for (`docs/ACTIX-ADAPTER-NOTES.md`).
 - Cases 10 (keep-alive, `Connection: close`, `Expect: 100-continue`), 11 (concurrency) and 12 (HEAD) are required of every adapter; they have no
   column because an adapter that fails them is not an adapter.
-- A mutant-free sub-check: in case 10, `Connection: close` and `Expect: 100-continue` have no service-level mutant (they are decided by the HTTP
-  server below the service); only the keep-alive part is shown able to fail.
+- All three parts of case 10 are shown able to fail. Keep-alive has a service-level mutant (`force-connection-close`). `Connection: close` and
+  `Expect: 100-continue` are decided by the HTTP/1.1 layer below the service, so their mutants (`ignore-connection-close`,
+  `skip-expect-continue`) are a copy of the reference accept loop whose stream drops that one header line before the HTTP/1.1 layer reads it
+  (`mutants::serve_stripping`); the real application runs on top. A test checks each fails case 10 with the message that names its own defect.
