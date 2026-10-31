@@ -12,7 +12,7 @@ rewrites it. Each adapter's `capabilities()` is compared with the measurement by
 | axum | yes | yes | yes | no | yes | yes | yes | 2097152 |
 | actix-web | yes | yes | yes | no | no | no | no | 2097152 |
 | poem | yes | yes | yes | no | yes | yes | yes | 2097152 |
-| salvo | yes | yes | yes | no | yes | no | no | 2097152 |
+| salvo | yes | yes | yes | no | yes | yes | yes | 2097152 |
 | warp | yes | yes | yes | no | no | no | yes | 2097152 |
 <!-- matrix:end -->
 
@@ -38,14 +38,15 @@ Client adapters, measured by the client cases against a raw-TCP peer (`client_su
   on hyper and axum) and without HTTPAnt's audit events, so both stay edge mode only.
 - *HTTP/2 (over TLS)*: declared (needs the `http2` feature of `httpant-server`), and held to its declaration by case 18. A TLS listener
   offers `h2` only if the adapter serves it. For `yes` the case proves a client offering `h2` and `http/1.1` is given `h2` and answered over
-  HTTP/2 with the request reported as `https`; for `no` (with TLS `yes`: salvo) it proves the client is given `http/1.1`, never an `h2` the
-  adapter cannot serve.
+  HTTP/2 with the request reported as `https`; for `no` with TLS `yes` (no adapter today: every adapter that terminates TLS serves HTTP/2) it
+  proves the client is given `http/1.1`, never an `h2` the adapter cannot serve. The `no` rows (actix-web, warp) do not terminate TLS.
 - *cleartext h2c (measured)*: a probe, **not a requirement** (nothing in the need list asks for it) and **not uniform**, shown as it is. The
   probe sends the HTTP/2 connection preface and an empty SETTINGS frame to a cleartext listener and reads what comes back: `yes` is an HTTP/2
   SETTINGS frame (the adapter's connection builder accepts h2c by prior knowledge), `no` is HTTP/1.1 text, a closed connection or silence.
-  Measured 2026-10-31 with the `http2` feature on: axum, poem and warp answer in HTTP/2; hyper (which HTTPAnt builds `http1_only` for
-  cleartext), actix-web and salvo do not. The `yes` rows are the probe's own control (it can see an HTTP/2 answer). The column does not say
-  which behaviour is right; ROADMAP row 13 holds that decision.
+  Measured 2026-10-31 with the `http2` feature on: axum, poem, salvo and warp answer in HTTP/2; hyper (which HTTPAnt builds `http1_only` for
+  cleartext) and actix-web do not. Salvo was `no` before it served HTTP/2 over TLS (0.5.14): its connection builder detects the preface on any
+  stream once its own `http2` feature is on, so the h2c answer moved with the feature. The `yes` rows are the probe's own control (it can see
+  an HTTP/2 answer). The column does not say which behaviour is right; ROADMAP row 13 holds that decision.
 - *non-`Send` handlers*: declared, not measured. The service contract is `Send`; actix-web (thread-per-core, `!Send` handlers) is the adapter this
   column is for (`docs/ACTIX-ADAPTER-NOTES.md`).
 - Cases 10 (keep-alive, `Connection: close`, `Expect: 100-continue`), 11 (concurrency) and 12 (HEAD) are required of every adapter; they have no
