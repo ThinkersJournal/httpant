@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! The README's first example, `examples/hello.rs` and the hub card (`easyants-card.toml`) are one program in three places. This test keeps them one:
-//! the README block is lines 2 to 11 of the example, and the card names exactly those lines, at most ten.
+//! the README block is lines 2 to 11 of the example, and the card names exactly those lines, at most ten. It lives here, not in the `httpant` package,
+//! because it reads files of the repository that the published package deliberately does not contain.
+
+fn root(path: &str) -> String {
+    format!("{}/../../{path}", env!("CARGO_MANIFEST_DIR"))
+}
 
 fn lines(path: &str) -> Vec<String> {
-    std::fs::read_to_string(path)
+    let path = root(path);
+    std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("{path}: {e}"))
         .replace("\r\n", "\n")
         .lines()
@@ -33,7 +39,7 @@ fn the_readme_example_is_the_example_file_and_the_card_shows_it() {
         "README's first example must be examples/hello.rs without its licence line"
     );
 
-    let card = std::fs::read_to_string("easyants-card.toml").expect("the hub card");
+    let card = std::fs::read_to_string(root("easyants-card.toml")).expect("the hub card");
     assert!(
         card.contains("example_path = \"examples/hello.rs\""),
         "the card must name examples/hello.rs"
