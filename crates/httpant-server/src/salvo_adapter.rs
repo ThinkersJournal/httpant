@@ -44,8 +44,13 @@ impl ServerAdapter for SalvoAdapter {
         } else {
             Support::No
         };
-        // These adapters serve HTTP/1.1 only until their HTTP/2 slice; they never offer `h2` (conformance case 18).
-        c.http2 = Support::No;
+        // With salvo's `http2` feature its connection builder reads the first bytes and serves HTTP/2 or HTTP/1.1; HTTPAnt offers `h2` on
+        // its TLS listener only then. Proved by conformance case 18.
+        c.http2 = if cfg!(all(feature = "tls", feature = "http2")) {
+            Support::Yes
+        } else {
+            Support::No
+        };
         c
     }
 
@@ -60,6 +65,8 @@ impl ServerAdapter for SalvoAdapter {
             let acceptor = Closable::new(acceptor, Arc::clone(&close), Arc::clone(&closed));
             #[cfg(feature = "tls")]
             if let Some(tls) = opts.tls.clone() {
+                #[cfg(feature = "http2")]
+                let tls = tls.alpn_protocols(&[b"h2", b"http/1.1"]);
                 let acceptor = crate::salvo_tls::TlsSalvoAcceptor::new(acceptor, tls);
                 return Ok(run(acceptor, svc, close, closed, addr, grace));
             }

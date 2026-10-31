@@ -346,8 +346,8 @@ async fn read_back_reports_the_certificate_the_listener_really_serves() {
             .unwrap()
             .as_secs() as i64;
         assert!(first.not_before <= now && first.not_after > now, "{id}");
-        // The probe offers `h2` and `http/1.1`; an adapter that serves HTTP/2 (with the `http2` feature) is read back as `h2`, salvo as `http/1.1`.
-        let expected = if cfg!(feature = "http2") && *id != "salvo" {
+        // The probe offers `h2` and `http/1.1`; an adapter that serves HTTP/2 (with the `http2` feature) is read back as `h2`.
+        let expected = if cfg!(feature = "http2") {
             "h2"
         } else {
             "http/1.1"

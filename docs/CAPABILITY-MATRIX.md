@@ -12,7 +12,7 @@ rewrites it. Each adapter's `capabilities()` is compared with the measurement by
 | axum | yes | yes | yes | no | yes | yes | 2097152 |
 | actix-web | yes | yes | yes | no | no | no | 2097152 |
 | poem | yes | yes | yes | no | yes | yes | 2097152 |
-| salvo | yes | yes | yes | no | yes | no | 2097152 |
+| salvo | yes | yes | yes | no | yes | yes | 2097152 |
 | warp | yes | yes | yes | no | no | no | 2097152 |
 <!-- matrix:end -->
 
@@ -38,8 +38,8 @@ Client adapters, measured by the client cases against a raw-TCP peer (`client_su
   on hyper and axum) and without HTTPAnt's audit events, so both stay edge mode only.
 - *HTTP/2 (over TLS)*: declared (needs the `http2` feature of `httpant-server`), and held to its declaration by case 18. A TLS listener
   offers `h2` only if the adapter serves it. For `yes` the case proves a client offering `h2` and `http/1.1` is given `h2` and answered over
-  HTTP/2 with the request reported as `https`; for `no` (with TLS `yes`: salvo) it proves the client is given `http/1.1`, never an `h2` the
-  adapter cannot serve. Cleartext HTTP/2 (h2c) is **not** part of the column and is not uniform: hyper refuses the prior-knowledge preface on
+  HTTP/2 with the request reported as `https`; for `no` with TLS `yes` (no adapter today: every adapter that terminates TLS serves HTTP/2) it
+  proves the client is given `http/1.1`, never an `h2` the adapter cannot serve. The `no` rows (actix-web, warp) do not terminate TLS. Cleartext HTTP/2 (h2c) is **not** part of the column and is not uniform: hyper refuses the prior-knowledge preface on
   a cleartext listener, while axum's and poem's own builders accept it (see ROADMAP).
 - *non-`Send` handlers*: declared, not measured. The service contract is `Send`; actix-web (thread-per-core, `!Send` handlers) is the adapter this
   column is for (`docs/ACTIX-ADAPTER-NOTES.md`).

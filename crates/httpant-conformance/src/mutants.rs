@@ -62,7 +62,8 @@ pub enum Mutant {
     DecodeBeforeRouting,
     /// TLS was asked for and the listener serves cleartext HTTP.
     ServeTlsInClear,
-    /// The TLS listener offers `h2` in front of a server that speaks only HTTP/1.1.
+    /// The TLS listener offers `h2` in front of a server that speaks only HTTP/1.1 (a server written for this mutant: every real adapter
+    /// that terminates TLS serves HTTP/2).
     OffersH2WithoutServingIt,
 }
 
@@ -347,6 +348,54 @@ pub fn serve_aborting(svc: BoxService, listener: std::net::TcpListener) -> Resul
         task,
         httpant_server::Grace::new(None),
     ))
+}
+
+/// A TLS server that speaks HTTP/1.1 only, behind an acceptor that offers `h2` first: the defect [`Mutant::OffersH2WithoutServingIt`] stands
+/// for. Every real adapter that terminates TLS serves HTTP/2 now, so the defect needs a server written for it.
+pub fn serve_http1_only_behind_h2_offer(
+    svc: BoxService,
+    opts: httpant_server::ServeOptions,
+) -> Result<RunningServer> {
+    use hyper::server::conn::http1;
+    use hyper::service::service_fn;
+    use hyper_util::rt::TokioIo;
+    use tokio::sync::oneshot;
+    use tokio::task::JoinSet;
+
+    let grace = opts.grace();
+    let svc = opts.wrap(svc);
+    let tls = opts
+        .tls
+        .clone()
+        .expect("this mutant is only started with TLS")
+        .alpn_protocols(&[b"h2", b"http/1.1"]);
+    opts.listener.set_nonblocking(true)?;
+    let addr = opts.listener.local_addr()?;
+    let listener = tokio::net::TcpListener::from_std(opts.listener)?;
+    let (stop, mut stopped) = oneshot::channel::<()>();
+    let task = tokio::spawn(async move {
+        let mut conns = JoinSet::new();
+        loop {
+            tokio::select! {
+                _ = &mut stopped => break,
+                accepted = listener.accept() => {
+                    let Ok((stream, peer)) = accepted else { continue };
+                    let (svc, tls) = (svc.clone(), tls.clone());
+                    conns.spawn(async move {
+                        let Ok(stream) = tls.accept(stream).await else { return };
+                        let service = service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
+                            let mut req: Request = req.map(Body::new);
+                            req.extensions_mut().insert(httpant_server::PeerAddr(peer));
+                            req.extensions_mut().insert(httpant_server::TlsConnection);
+                            svc.clone().oneshot(req)
+                        });
+                        let _ = http1::Builder::new().serve_connection(TokioIo::new(stream), service).await;
+                    });
+                }
+            }
+        }
+    });
+    Ok(RunningServer::new(addr, stop, task, grace))
 }
 
 fn decode_before_routing(svc: BoxService, mut req: Request) -> BoxFuture<'static, Response> {

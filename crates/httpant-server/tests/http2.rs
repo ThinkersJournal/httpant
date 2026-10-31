@@ -23,6 +23,8 @@ const H2_ADAPTERS: &[&str] = &[
     "axum",
     #[cfg(feature = "poem")]
     "poem",
+    #[cfg(feature = "salvo")]
+    "salvo",
 ];
 
 struct Made {
