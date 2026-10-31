@@ -5,7 +5,7 @@ the record of the first one. It is advice for the person deciding the publish, a
 path it took, is a reason to hold.
 
 **Run 1, 2026-10-31**, a fresh `sonnet` subagent (no memory of this project), Windows, offline, at `feat/release-packaging` (0.5.18 placeholder).
-**Result: pass**, and the README was fixed from it; **run 2** (below), on the revised package with a new agent, also passed. All three tasks worked on the first attempt from the README alone, with no compiler error or warning. It took the agent about
+**Result: pass**, and the README was fixed from it; **run 2** and **run 3** (below), each with a new agent, also passed. All three tasks worked on the first attempt from the README alone, with no compiler error or warning. It took the agent about
 60 seconds of work; about 25 s of that was the first compile.
 
 ## What the agent was given, and what it was not
@@ -114,8 +114,19 @@ What it raised, and what was done:
 | Install is below the first example | kept on purpose (rule 6.24: the hello-world first); the sentence under the example points at it, and the agent noted that sentence | none |
 | it did not test the "id from your settings" claim, nor the feature-off message with the feature on | not a defect; the first is a `&str` argument, the second is covered by unit tests in `httpant-server` | none |
 
-These two wording changes (a sentence, and a doctested snippet) came after run 2 and the trial was not repeated for them; the first example, the
-second example and both error messages that the agent checked are untouched.
+These two wording changes (a sentence, and a doctested snippet) came after run 2; run 3 covers them.
+
+## Run 3: the final packaged form, a third agent
+
+**Run 2026-10-31**, a third fresh `sonnet` subagent, on the crates re-packaged after the packaging branch was rebased onto `main` (restructure #37
+merged; 0.5.18 placeholder; README `cmp`-identical to the repository's; mirror refreshed). Same tasks as run 2. **Result: pass.** All three tasks first
+attempt, exit status 0 each time, no error or warning; the cold first compile took 1 m 44 s. Both messages matched the README character for character.
+
+Its words (quoted): "Yes, a stranger can get from README to a working program without help. Install, the first example, the adapter switch and both error
+messages all worked as written, first try, with no warnings. The single biggest friction was minor: the first example is silent ... and the cold build
+takes about 1m45s." Smaller notes it raised, none acted on: the README does not show a full axum example (it says `cargo add httpant --features axum`;
+the agent did not try that path); it does not state the minimum Rust version in words (it points at `rust-version` in `Cargo.toml`, which the packaged
+crate does contain); it does not mention the cold build time. Not defects; recorded here so the PM can decide whether any is worth a line.
 
 ## To repeat it
 
