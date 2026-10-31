@@ -13,15 +13,9 @@ Library-agnostic HTTP layer: core + server half + client half, web library chose
 ## State
 - Work list: `ROADMAP.md` (PM's order). The first-release gate (G1 to G11) is done and published. Open at the PM: the hub registry flip
   (`repo = "ThinkersJournal/httpant"`, `card = "required"` in the easyants repository) goes to CireSnave via the board.
-- **Current TASK (PM, 2026-10-31):** client https. The client refuses `https://` today, which blocks WebHostAnt (Cloudflare API, health probes).
-  Done in the design-note PR: ROADMAP row 14 and `docs/HTTPS-CLIENT-DESIGN.md` (options + recommendation: rustls/ring, bundled roots default, OS
-  store opt-in, feature `https`, private-address guard in the resolver plus a literal check plus a post-connect backstop). **Stop at the PM's
-  [READY]**; the implementation PRs come after the PM decides the four questions at the end of the note. WebHostAnt's needs: WebHostAnt PR 20,
-  `docs/HTTPS-CLIENT-NEEDS.md` (13 needs).
-- **Parked, unblocked, start when the TASK is handed over:** ROADMAP row 12, the flaky `the_whole_suite_passes_on_every_adapter` (failed once on
-  Windows, not reproduced; the assertion message already names the adapter and the failed cases). Plan: build the test binary once and run just that
-  test in a loop under CPU load, keep every failing output. Then row 5 (benchmarks, last). Optional: a clean actix adapter through
-  `actix-server`/`actix-http` running HTTPAnt's own acceptor (`docs/TLS-ADAPTER-PROBES.md`). Row 13 (h2c) is decided: not uniform, recorded as measured.
+- **Published:** 0.5.19 (first release), 0.5.21 (client https, verified; feature `https`), 0.5.22 (private-address guard, `refuse_private_addresses`), all four crates, tags `v0.5.19`, `v0.5.21`, `v0.5.22` (PM). WebHostAnt's Cloudflare REST calls and health probe can now use them; their needs are WebHostAnt PR 20 (`docs/HTTPS-CLIENT-NEEDS.md`). Design: `docs/HTTPS-CLIENT-DESIGN.md`.
+- **Not started, no PM ruling, none blocks WebHostAnt:** client slice 3 (OS root store opt-in, proxy with CONNECT, opt-in redirects; the proxy slice must say the guard would then judge the proxy's address). Ask the PM before starting.
+- **Row 12 (flaky suite):** measured, not reproduced (40/40 under 32 saturating loaders at `6d564a0`), on watch in ROADMAP; the failure message names adapter and cases. **Left:** row 5 (benchmarks, last). Optional: a clean actix adapter through `actix-server`/`actix-http` running HTTPAnt's own acceptor (`docs/TLS-ADAPTER-PROBES.md`). Row 13 (h2c) is decided: not uniform, recorded as measured.
 - **Option A (Tower core, thin adapters) is provisional**: CireSnave has not decided A/B/C.
 - **Lessons:** Windows green is not Linux green (salvo). Two examples with the same name in one workspace write the same `target/.../examples/<name>.exe`
   and race on Windows (`LNK1104`; fixed in 0.5.19 by `server_hello`); read cargo's `output filename collision` warning. Read main's post-merge CI on
