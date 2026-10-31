@@ -42,4 +42,44 @@ being false; the run's `failed` map is empty for those names, so it is not a rec
   about the web framework. JSON is the closer reading of transport cost.
 - R23 was the first round on new hardware; rankings can move between rounds with environment changes.
 - Actix-web has no figure here, so HTTPAnt must not claim anything about actix speed from R23. Measure it in our own bench harness.
-- Nothing here says what HTTPAnt's own overhead is. That is a separate measurement (adapter vs the bare framework) with its own row in the design.
+- Nothing in the TechEmpower figures says what HTTPAnt's own overhead is. That is the next section, measured by our own harness.
+
+## HTTPAnt's own overhead: adapter vs the bare library (our measurement)
+
+Harness: `crates/httpant-bench` (unpublished; `cargo run --release -p httpant-bench`). Both sides serve `GET /` with the same 13-byte body
+(`Hello, World!`) on a loopback listener, on the same machine, under the same load: 64 keep-alive connections, one request in flight on each.
+The server and the load generator run on separate 4-thread runtimes; actix-web runs two workers on both sides (what HTTPAnt's actix adapter
+uses). Each adapter is measured 5 times per side for 3 s after a 0.5 s warm-up, and the order of the two sides alternates between rounds so a
+slow minute on the machine lands on both. Every response is checked (status 200, exact body); a wrong answer is counted, never counted as
+speed (a unit test feeds the checker a wrong body and requires 0 requests and some errors). A short run of all twelve servers is a test in CI,
+so the harness cannot rot; the numbers below are not produced in CI.
+
+Measured at `5bbeeda` plus the harness (0.5.26 placeholder), 2026-10-31, release build, rustc 1.99.1, Windows 11, AMD Ryzen 9 7940HX
+(32 logical processors), other lanes' processes possibly running on the same machine (not controlled). The route in the HTTPAnt run goes
+through the router, the boxed service and the adapter's request and response conversion; the bare run goes through the library's own route.
+
+| Adapter | bare req/s (median of 5) | HTTPAnt req/s (median of 5) | HTTPAnt / bare | bare p99 us | HTTPAnt p99 us | wrong answers |
+|---|---|---|---|---|---|---|
+| hyper | 44,992 | 40,741 | 0.91 | 2,585 | 2,906 | 0 |
+| axum | 42,894 | 39,709 | 0.93 | 2,719 | 3,056 | 0 |
+| actix-web | 41,848 | 33,961 | 0.81 | 3,002 | 3,733 | 0 |
+| poem | 40,898 | 38,159 | 0.93 | 2,898 | 3,210 | 0 |
+| salvo | 40,675 | 36,567 | 0.90 | 2,995 | 3,453 | 0 |
+| warp | 42,666 | 29,483 | 0.69 | 2,715 | 4,410 | 0 |
+
+What this supports, and what it does not:
+
+- **A cost per adapter, on a route that does nothing.** On this machine HTTPAnt served 0.69 to 0.93 of the bare library's requests per second.
+  The adapters differ: hyper, axum, poem and salvo lose 7 to 10 percent, actix-web 19, and warp 31. p99 latency rose by 10 to 60 percent.
+- **It is an upper bound on relative cost, not an absolute speed.** A route that returns a constant spends nothing on application work, so the
+  conversion layer is the largest share it will ever be; a real handler dilutes it.
+- **The load generator may be the limit.** About 40,000 requests per second from 64 connections on a 32-thread machine is far below what these
+  libraries do (TechEmpower JSON above, on other hardware). I did not measure whether the generator or the server saturated; if the generator
+  did, the ratios are compressed toward 1 and the real gaps are larger. The harness gives the generator 4 threads and parses each response
+  with allocation; both are the first things to change.
+- **Spread was not recorded.** The table shows medians of five runs; the per-round figures were not kept, so how stable the ratios are is
+  not shown. The ordering of warp, actix-web and the other four is large next to the run-to-run noise I saw, but that is an impression, not a
+  measurement. Re-run with more rounds before quoting a single ratio.
+- **One route, one body size, HTTP/1.1 cleartext, keep-alive.** Nothing about TLS, HTTP/2, request bodies, large responses, connection
+  setup, or many routes. Nothing is claimed about actix-web or warp in absolute terms (TechEmpower R23 has no figure for either).
+- Do not compare rows with each other as a framework ranking: the harness measures each library against itself.
