@@ -48,7 +48,17 @@ async fn main() -> httpant::Result<()> {
 
 Two different mistakes get two different messages, each ending with what to do. An id that does not exist: ``unknown adapter `nonexistent`: use one of ["hyper"]``
 (it lists the ids this build has). An id that exists but whose feature is off: ``adapter `axum` is not compiled in: enable the `axum` feature``.
-The id can come from your settings instead of your code.
+The id can come from your settings instead of your code. To see either message, match on the result (it is an ordinary `Result`, and the error prints with `{}`):
+
+```rust
+use httpant::Server;
+fn main() {
+    match Server::with_adapter("nonexistent") {
+        Ok(_) => unreachable!("there is no such adapter"),
+        Err(e) => println!("{e}"),
+    }
+}
+```
 
 ## What you get
 
@@ -61,7 +71,8 @@ so the same program behaves the same on each. What each one does, as measured an
 - **Real HTTP.** Unknown methods are not turned into `GET`, every status code reaches the client as sent, repeated headers stay repeated, and
   bodies stream. (The crate this replaces did none of these: [what it got wrong](https://github.com/ThinkersJournal/httpant/blob/main/docs/WEB-SERVER-ABSTRACTION-KNOWN-ISSUES.md).)
 - **Behind a proxy or CDN.** The client address and scheme are believed from `X-Forwarded-For` / `X-Forwarded-Proto` only from peers you list; nobody
-  is trusted by default. Read them from `Origin`.
+  is trusted by default. A handler reads the result from the request's extensions as `httpant::server::Origin` (client address, scheme, and whether it
+  came through a trusted proxy).
 - **TLS in the server** (feature `tls`, rustls): certificates come from a `CertSource` you provide, asked once per handshake, so a renewed certificate
   serves the next connection with no restart. HTTP/2 over TLS (feature `http2`), the ACME HTTP-01 and TLS-ALPN-01 hooks, a port-80 redirect, audit
   events and a read-back of what a listener really serves are there too. HTTPAnt does not do ACME, storage or renewal: that is the source's job.

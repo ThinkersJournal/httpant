@@ -4,8 +4,8 @@ EXPECTATIONS 6.24: *a fresh-eyes trial (an agent given only the README must reac
 the record of the first one. It is advice for the person deciding the publish, as well as a required step: a pass that reads as lucky, or an ugly
 path it took, is a reason to hold.
 
-**Run 2026-10-31**, a fresh `sonnet` subagent (no memory of this project), Windows, offline, at `feat/release-packaging` (0.5.18 placeholder).
-**Result: pass.** All three tasks worked on the first attempt from the README alone, with no compiler error or warning. It took the agent about
+**Run 1, 2026-10-31**, a fresh `sonnet` subagent (no memory of this project), Windows, offline, at `feat/release-packaging` (0.5.18 placeholder).
+**Result: pass**, and the README was fixed from it; **run 2** (below), on the revised package with a new agent, also passed. All three tasks worked on the first attempt from the README alone, with no compiler error or warning. It took the agent about
 60 seconds of work; about 25 s of that was the first compile.
 
 ## What the agent was given, and what it was not
@@ -88,8 +88,34 @@ path it took, is a reason to hold.
 | Install after the example | **kept on purpose:** the rule (6.24) is that the hello-world comes first | a line under the example now points at the two `cargo add` commands |
 
 The README changed after the trial in response to it, in wording only: the first example is unchanged byte for byte (and still checked against
-`examples/hello.rs` and the hub card by a test), and the second now compiles as a complete program. The trial was **not re-run** on the revised
-README. A re-run is cheap (below) and is the PM's call.
+`examples/hello.rs` and the hub card by a test), and the second now compiles as a complete program. The PM asked for a re-run on the revised
+package; it follows.
+
+## Run 2: the revised README, a new agent
+
+**Run 2026-10-31**, a second fresh `sonnet` subagent (it was not told what the first found), on the crates re-packaged from the revised tree
+(`feat/release-packaging`, 0.5.18 placeholder; the mirror was rebuilt, the README `cmp`-identical to the repository's). Same tasks, with task 3
+widened to both errors. **Result: pass.** All three tasks first attempt, no error or warning, about 66 s of agent work.
+
+- Task 1 and 2: `cargo add httpant` (added 0.5.18), `cargo add tokio ...`, the README's example in `src/main.rs`, `cargo run` exit 0; then
+  `Server::new()` became `Server::with_adapter("hyper")?`, `cargo run` exit 0. It noted that "the program printed nothing, as the README says".
+- Task 3 output, as the agent saw it: ``nonexistent: unknown adapter `nonexistent`: use one of ["hyper"]`` and
+  ``axum: adapter `axum` is not compiled in: enable the `axum` feature``. Its words: "Both messages match the README's quoted text character for character."
+- Its verdict (quoted): "yes, a stranger could get from the README to a working program without help. The README's instructions worked as written, and
+  every message I saw matched what the README said. The single biggest friction was minor: the Install section is below the first example, and the
+  README never shows the error-handling snippet for Task 3."
+
+What it raised, and what was done:
+
+| finding | verdict | what changed |
+|---|---|---|
+| no snippet for catching and printing the error | right | a short `match` example, compiled and run as a doctest (the README now has three doctests) |
+| "Read them from `Origin`" is confusing; it could not tell what `Origin` is | right | the bullet now says a handler reads `httpant::server::Origin` from the request's extensions, and what it holds (client address, scheme, whether it came through a trusted proxy) |
+| Install is below the first example | kept on purpose (rule 6.24: the hello-world first); the sentence under the example points at it, and the agent noted that sentence | none |
+| it did not test the "id from your settings" claim, nor the feature-off message with the feature on | not a defect; the first is a `&str` argument, the second is covered by unit tests in `httpant-server` | none |
+
+These two wording changes (a sentence, and a doctested snippet) came after run 2 and the trial was not repeated for them; the first example, the
+second example and both error messages that the agent checked are untouched.
 
 ## To repeat it
 
