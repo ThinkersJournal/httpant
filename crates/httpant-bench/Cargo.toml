@@ -1,0 +1,22 @@
+[package]
+name = "httpant-bench"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "HTTPAnt benchmark harness: each adapter against the bare web library it wraps, same machine, same load, same response"
+publish = false
+
+[dependencies]
+httpant-server = { workspace = true, features = ["axum", "actix-web", "poem", "salvo", "warp"] }
+tokio = { workspace = true, features = ["net", "io-util", "time", "rt-multi-thread", "macros", "sync"] }
+bytes.workspace = true
+http-body-util.workspace = true
+hyper = { workspace = true, features = ["server", "http1"] }
+hyper-util = { workspace = true, features = ["tokio"] }
+axum = { workspace = true, features = ["tokio", "http1"] }
+actix-web.workspace = true
+poem = { workspace = true, features = ["server"] }
+salvo_core = { workspace = true, features = ["server", "server-handle", "http1"] }
+warp = { workspace = true, features = ["server"] }

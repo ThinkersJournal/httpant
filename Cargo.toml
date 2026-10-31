@@ -44,13 +44,13 @@ test = true
 
 [workspace]
 resolver = "3"
-members = ["crates/httpant-core", "crates/httpant-server", "crates/httpant-client", "crates/httpant-conformance"]
+members = ["crates/httpant-core", "crates/httpant-server", "crates/httpant-client", "crates/httpant-conformance", "crates/httpant-bench"]
 # `cargo build`, `cargo test` and friends at the root cover every crate, as they did before there was a root package.
-default-members = [".", "crates/httpant-core", "crates/httpant-server", "crates/httpant-client", "crates/httpant-conformance"]
+default-members = [".", "crates/httpant-core", "crates/httpant-server", "crates/httpant-client", "crates/httpant-conformance", "crates/httpant-bench"]
 
 [workspace.package]
 # One number for every crate in the project (portfolio rule). 0.1.0: a new line, not a continuation of web-server-abstraction 1.0.x.
-version = "0.5.25"
+version = "0.5.26"
 edition = "2024"
 # The default build (hyper only, no optional adapter). Measured on 1.88 and kept by the `msrv` job in CI; the optional adapters can need more:
 # actix-web 1.89, salvo 1.94 and, through its dependencies, 1.95 with every feature on (cargo names the package that asks).
@@ -74,9 +74,9 @@ salvo_core = { version = "1", default-features = false }
 warp = { version = "0.4", default-features = false }
 hyper = { version = "1", default-features = false }
 hyper-util = { version = "0.1", default-features = false }
-httpant-core = { path = "crates/httpant-core", version = "0.5.25" }
-httpant-server = { path = "crates/httpant-server", version = "0.5.25" }
-httpant-client = { path = "crates/httpant-client", version = "0.5.25" }
+httpant-core = { path = "crates/httpant-core", version = "0.5.26" }
+httpant-server = { path = "crates/httpant-server", version = "0.5.26" }
+httpant-client = { path = "crates/httpant-client", version = "0.5.26" }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 # Client https: hyper-rustls on the same rustls and ring as the server; roots bundled (webpki-roots), never read from the machine unless asked.
 hyper-rustls = { version = "0.27", default-features = false, features = ["ring", "http1", "tls12"] }
