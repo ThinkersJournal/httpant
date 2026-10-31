@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.27] - 2026-10-31
+
+- HANDOFF rewritten to current state (0.5.23 to 0.5.26 merged, roadmap has no `next` rows, watch rows named). Docs only, no code change. Not published.
+
 ## [0.5.26] - 2026-10-31
 
 - **Benchmark harness (ROADMAP row 5):** new unpublished crate `httpant-bench` runs each adapter against the bare web library it wraps (hyper, axum, actix-web, poem, salvo, warp) on the same constant route, machine and load (64 keep-alive connections), alternating sides between rounds, checking every response. First measurement in `docs/BENCHMARKS.md`: HTTPAnt served 0.91 (hyper), 0.93 (axum), 0.81 (actix-web), 0.93 (poem), 0.90 (salvo) and 0.69 (warp) of the bare library's requests per second; p99 latency 10 to 60 percent higher. The doc says what that supports and what it does not (the load generator may be the limit; spread not kept). A short run of all twelve servers is a test, so the harness is compiled and run in CI. No change to any published crate.
