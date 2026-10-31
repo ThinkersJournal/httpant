@@ -47,6 +47,9 @@ jobs:
       - name: hello-world example, run in CI
         run: cargo run --locked --example hello -p httpant-server
 
+      - name: the `httpant` facade's hello-world (the one a stranger copies), run in CI
+        run: cargo run --locked --example hello -p httpant
+
       - name: cargo doc
         env:
           RUSTDOCFLAGS: -D warnings
