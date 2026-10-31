@@ -73,8 +73,7 @@ impl Body { pub fn empty() -> Self; pub fn from_bytes(b: impl Into<Bytes>) -> Se
 
 - **No unbounded read exists.** `bytes`/`text` take an explicit limit (the old axum adapter read with `usize::MAX`). A default limit is set on the server
   and is visible in `Capabilities`. Streaming a body chunk by chunk is the primary representation; buffering is a convenience.
-- **Handler:** any `async fn` (or closure) taking zero or more extractors and returning `impl IntoResponse`. The first slice ships only `Request` and
-  `Path`/`Query` extractors, not a large extractor zoo (UNVERIFIED how much users will want; the survey shows the old crate had many modules nobody could call).
+- **Handler:** any `async fn` (or closure) taking zero or more extractors and returning `impl IntoResponse`. Shipped in 0.5.28: `Request`, `Path<T>`, `Query<T>`, `PathParams` and the `FromRequest` trait, not a large extractor zoo (UNVERIFIED how much users will want; the survey shows the old crate had many modules nobody could call).
   `IntoResponse` is implemented for `&str`, `String`, `Bytes`, `StatusCode`, `(StatusCode, T)`, `Response`, `Result<T, Error>`.
 - **The universal form is a Tower service:** every handler and the whole router compile to
   `tower_service::Service<Request, Response = Response, Error = Infallible>` boxed as `BoxService`. An adapter's only job is to run that one service
