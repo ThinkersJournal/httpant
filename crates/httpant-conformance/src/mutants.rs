@@ -62,6 +62,10 @@ pub enum Mutant {
     DecodeBeforeRouting,
     /// TLS was asked for and the listener serves cleartext HTTP.
     ServeTlsInClear,
+    /// The server ignores `Connection: close`: the connection stays open after a response to a request that asked for it to close.
+    IgnoreConnectionClose,
+    /// The server ignores `Expect: 100-continue`: no `100 Continue` is sent, so a client that waits for it before sending the body waits for ever.
+    SkipExpectContinue,
     /// The TLS listener offers `h2` in front of a server that speaks only HTTP/1.1 (a server written for this mutant: every real adapter
     /// that terminates TLS serves HTTP/2).
     OffersH2WithoutServingIt,
@@ -109,6 +113,8 @@ impl Mutant {
             Mutant::NoBodyLimit => "no-body-limit",
             Mutant::ServeTlsInClear => "serve-tls-in-clear",
             Mutant::OffersH2WithoutServingIt => "offers-h2-without-serving-it",
+            Mutant::IgnoreConnectionClose => "ignore-connection-close",
+            Mutant::SkipExpectContinue => "skip-expect-continue",
         }
     }
 }
@@ -129,7 +135,9 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         | Mutant::NoHeaderBytesLimit
         | Mutant::NoBodyLimit
         | Mutant::ServeTlsInClear
-        | Mutant::OffersH2WithoutServingIt => return svc,
+        | Mutant::OffersH2WithoutServingIt
+        | Mutant::IgnoreConnectionClose
+        | Mutant::SkipExpectContinue => return svc,
         Mutant::FoldMethodToGet => fold_method_to_get,
         Mutant::ClampStatus => clamp_status,
         Mutant::HashMapHeaders => hashmap_headers,
@@ -396,6 +404,123 @@ pub fn serve_http1_only_behind_h2_offer(
         }
     });
     Ok(RunningServer::new(addr, stop, task, grace))
+}
+
+/// A stream that drops whole header lines from what the server reads, so the HTTP/1.1 layer above it never sees them: a server that
+/// ignores that header. The lines are matched whole and without case (`connection: close`), and only in what is read, never in what is
+/// written.
+struct Stripping {
+    inner: tokio::net::TcpStream,
+    lines: &'static [&'static str],
+}
+
+impl Stripping {
+    fn filter(&self, data: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(data.len());
+        for line in data.split_inclusive(|b| *b == b'\n') {
+            let text = String::from_utf8_lossy(line).to_ascii_lowercase();
+            if self.lines.contains(&text.trim_end()) {
+                continue;
+            }
+            out.extend_from_slice(line);
+        }
+        out
+    }
+}
+
+impl tokio::io::AsyncRead for Stripping {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let mut tmp = vec![0u8; buf.remaining()];
+        let mut read = tokio::io::ReadBuf::new(&mut tmp);
+        match std::pin::Pin::new(&mut self.inner).poll_read(cx, &mut read) {
+            std::task::Poll::Ready(Ok(())) => {
+                let got = read.filled();
+                let kept = self.filter(got);
+                if kept.is_empty() && !got.is_empty() {
+                    // The whole chunk was a dropped line: ask again rather than report a false end of stream.
+                    cx.waker().wake_by_ref();
+                    return std::task::Poll::Pending;
+                }
+                buf.put_slice(&kept);
+                std::task::Poll::Ready(Ok(()))
+            }
+            other => other,
+        }
+    }
+}
+
+impl tokio::io::AsyncWrite for Stripping {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+/// A copy of the reference accept loop whose connections never see the header lines in `lines`: the defects [`Mutant::IgnoreConnectionClose`]
+/// (`connection: close`) and [`Mutant::SkipExpectContinue`] (`expect: 100-continue`) stand for. Both behaviours are decided below the service,
+/// by the HTTP/1.1 layer, so the defect has to be in what that layer is given. The real application still runs on top.
+pub fn serve_stripping(
+    svc: BoxService,
+    listener: std::net::TcpListener,
+    lines: &'static [&'static str],
+) -> Result<RunningServer> {
+    use hyper::server::conn::http1;
+    use hyper::service::service_fn;
+    use hyper_util::rt::TokioIo;
+    use tokio::sync::oneshot;
+    use tokio::task::JoinSet;
+
+    listener.set_nonblocking(true)?;
+    let addr = listener.local_addr()?;
+    let listener = tokio::net::TcpListener::from_std(listener)?;
+    let (stop, mut stopped) = oneshot::channel::<()>();
+    let task = tokio::spawn(async move {
+        let mut conns = JoinSet::new();
+        loop {
+            tokio::select! {
+                _ = &mut stopped => break,
+                accepted = listener.accept() => {
+                    let Ok((stream, _)) = accepted else { continue };
+                    let svc = svc.clone();
+                    conns.spawn(async move {
+                        let service = service_fn(move |req: hyper::Request<hyper::body::Incoming>| {
+                            svc.clone().oneshot(req.map(Body::new))
+                        });
+                        let io = Stripping { inner: stream, lines };
+                        let _ = http1::Builder::new().serve_connection(TokioIo::new(io), service).await;
+                    });
+                }
+            }
+        }
+        drop(conns);
+    });
+    Ok(RunningServer::new(
+        addr,
+        stop,
+        task,
+        httpant_server::Grace::new(None),
+    ))
 }
 
 fn decode_before_routing(svc: BoxService, mut req: Request) -> BoxFuture<'static, Response> {
