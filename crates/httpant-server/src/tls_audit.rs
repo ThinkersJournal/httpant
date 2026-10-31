@@ -39,6 +39,11 @@ pub enum TlsEvent {
         /// Why.
         reason: RefusalReason,
     },
+    /// A TLS-ALPN-01 validation connection (`acme-tls/1`) was answered with the source's challenge certificate and closed.
+    AcmeChallengeServed {
+        /// The server name the validator asked for, `None` if it sent none.
+        server_name: Option<String>,
+    },
     /// The certificate served for a name is not the one served for it before (a renewal, or a replacement). Not sent for the first
     /// certificate a name is served.
     CertificateChanged {

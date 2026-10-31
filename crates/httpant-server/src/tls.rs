@@ -103,6 +103,17 @@ pub trait CertSource: Send + Sync + 'static {
         &'a self,
         server_name: Option<&'a str>,
     ) -> BoxFuture<'a, std::result::Result<Option<Arc<ServerCert>>, CertSourceError>>;
+
+    /// The TLS-ALPN-01 challenge certificate (RFC 8737) for `server_name`, when a validation for that name is pending; `None` (the default)
+    /// otherwise. The acceptor asks only when the client offers the ALPN protocol `acme-tls/1`, and then answers with this certificate
+    /// alone: it completes that handshake (ALPN `acme-tls/1` only), closes the connection, and the application never sees it. HTTPAnt does
+    /// nothing else of ACME: whoever builds the certificate (with its `acmeIdentifier` extension) is the source.
+    fn acme_tls_cert<'a>(
+        &'a self,
+        _server_name: Option<&'a str>,
+    ) -> BoxFuture<'a, Option<Arc<ServerCert>>> {
+        Box::pin(async { None })
+    }
 }
 
 /// A source with one certificate for every name (a file pair, or a self-signed certificate in tests).
@@ -195,6 +206,23 @@ impl TlsAcceptor {
                 .map_err(|e| (RefusalReason::Protocol, e))?;
             let name = start.client_hello().server_name().map(str::to_owned);
             *hello_name.lock().unwrap_or_else(|e| e.into_inner()) = Some(name.clone());
+            // A validation connection (RFC 8737): the client offers `acme-tls/1` and the source has a challenge pending for the name.
+            let offers_acme = start
+                .client_hello()
+                .alpn()
+                .is_some_and(|mut p| p.any(|p| p == ACME_TLS_ALPN));
+            if offers_acme && let Some(challenge) = self.source.acme_tls_cert(name.as_deref()).await
+            {
+                let config = config_for(&challenge, ACME_TLS_ALPN)
+                    .map_err(|e| (RefusalReason::Protocol, e))?;
+                let mut stream = start
+                    .into_stream(Arc::new(config))
+                    .await
+                    .map_err(|e| (RefusalReason::Protocol, e))?;
+                // The validator has seen the certificate by now; there is nothing to serve on this connection.
+                let _ = tokio::io::AsyncWriteExt::shutdown(&mut stream).await;
+                return Ok(None);
+            }
             let cert = match self.source.cert_for(name.as_deref()).await {
                 Ok(Some(cert)) => cert,
                 Ok(None) => {
@@ -203,7 +231,8 @@ impl TlsAcceptor {
                 }
                 Err(e) => return Err((RefusalReason::SourceFailed, io::Error::other(e))),
             };
-            let config = config_for(&cert).map_err(|e| (RefusalReason::Protocol, e))?;
+            let config =
+                config_for(&cert, b"http/1.1").map_err(|e| (RefusalReason::Protocol, e))?;
             let stream = start
                 .into_stream(Arc::new(config))
                 .await
@@ -215,7 +244,7 @@ impl TlsAcceptor {
                     serial: tls_audit::serial_hex(cert.leaf_der()),
                 });
             }
-            Ok(stream)
+            Ok(Some(stream))
         };
         let refused = |reason: RefusalReason| {
             let name = hello_name
@@ -229,7 +258,20 @@ impl TlsAcceptor {
             });
         };
         match tokio::time::timeout(self.handshake_timeout, handshake).await {
-            Ok(Ok(stream)) => Ok(stream),
+            Ok(Ok(Some(stream))) => Ok(stream),
+            Ok(Ok(None)) => {
+                // A TLS-ALPN-01 validation connection, served and closed in the handshake; `hello_name` holds the name it asked for.
+                let name = hello_name
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone()
+                    .flatten();
+                self.emit(TlsEvent::AcmeChallengeServed {
+                    server_name: name.as_deref().map(tls_audit::clean_name),
+                });
+                // Not a refusal and not a connection for the application: the caller drops it like any ended connection.
+                Err(io::Error::other("TLS-ALPN-01 validation connection served"))
+            }
             Ok(Err((reason, why))) => {
                 refused(reason);
                 Err(why)
@@ -245,13 +287,16 @@ impl TlsAcceptor {
     }
 }
 
-fn config_for(cert: &ServerCert) -> io::Result<ServerConfig> {
+/// The ALPN protocol of a TLS-ALPN-01 validation connection (RFC 8737).
+const ACME_TLS_ALPN: &[u8] = b"acme-tls/1";
+
+fn config_for(cert: &ServerCert, alpn: &[u8]) -> io::Result<ServerConfig> {
     let mut config = ServerConfig::builder_with_provider(Arc::new(provider::default_provider()))
         .with_protocol_versions(&[&version::TLS13, &version::TLS12])
         .map_err(io::Error::other)?
         .with_no_client_auth()
         .with_cert_resolver(Arc::new(One(Arc::clone(&cert.certified))));
-    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    config.alpn_protocols = vec![alpn.to_vec()];
     Ok(config)
 }
 

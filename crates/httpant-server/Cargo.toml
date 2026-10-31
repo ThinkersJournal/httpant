@@ -20,7 +20,7 @@ poem = ["dep:poem", "dep:futures-util", "dep:http-body-util"]
 httpant-core.workspace = true
 hyper = { workspace = true, features = ["server", "http1"] }
 hyper-util = { workspace = true, features = ["tokio"] }
-tokio = { workspace = true, features = ["net", "rt", "sync", "macros", "time"] }
+tokio = { workspace = true, features = ["net", "rt", "sync", "macros", "time", "io-util"] }
 tower.workspace = true
 axum = { workspace = true, optional = true, features = ["tokio", "http1"] }
 actix-web = { workspace = true, optional = true }
