@@ -41,10 +41,11 @@ salvo_core = { workspace = true, optional = true, features = ["server", "server-
 rustls = { workspace = true, optional = true }
 tokio-rustls = { workspace = true, optional = true }
 x509-parser = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 httpant-client.workspace = true
-serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 futures-util.workspace = true
 http-body-util.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "io-util"] }

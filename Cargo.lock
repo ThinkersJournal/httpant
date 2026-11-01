@@ -853,6 +853,7 @@ dependencies = [
  "rustls",
  "salvo_core",
  "serde",
+ "serde_json",
  "tokio",
  "tokio-rustls",
  "tower",
