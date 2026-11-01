@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.2] - 2026-11-01
 
-- HANDOFF rewritten to current state (0.6.0 h2c off by default, 0.6.1 `ServerSettings.h2c`, the ConfigurAnt 0.6.3 end-to-end try, watch conditions as `WAIT:` lines). New `tools/crate-newer.sh` (not packaged): exit 0 when crates.io reports another latest version of a crate, used by those lines. Docs and a script, no library change. Not published.
+- HANDOFF rewritten to current state (0.6.0 h2c off by default, 0.6.1 `ServerSettings.h2c`, the ConfigurAnt 0.6.3 end-to-end try, watch conditions as `WAIT:` lines). New `tools/crate-newer.sh` (not packaged): exit 0 when crates.io reports another latest version of a crate, used by those lines; a `.gitattributes` keeps `*.sh` LF on Windows checkouts. Docs and a script, no library change. Not published.
 
 ## [0.6.1] - 2026-11-01
 
