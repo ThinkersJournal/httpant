@@ -1,6 +1,6 @@
 # Cleartext HTTP/2 (h2c) policy (ROADMAP row 13)
 
-**Decided 2026-11-01 (PM) and built in 0.5.35: option C.** `Server::h2c(true)` asks for it; off by default; warp cannot refuse it and is declared
+**Decided 2026-11-01 (PM) and built in 0.6.0: option C.** `Server::h2c(true)` asks for it; off by default; warp cannot refuse it and is declared
 so (`h2c_refusable: No`). What follows is the analysis that led to it; the measured result is `docs/CAPABILITY-MATRIX.md`.
 One correction to the text below: the guard does not read ahead or hold bytes back (it passes every byte through and ends the connection when the
 first 14 bytes spell `PRI * HTTP/2.0`), so it adds no delay for a slow client.
