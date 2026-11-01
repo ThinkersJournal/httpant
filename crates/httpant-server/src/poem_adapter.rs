@@ -45,6 +45,13 @@ impl ServerAdapter for PoemAdapter {
         } else {
             Support::No
         };
+        // Cleartext HTTP/2 only when asked for (`h2c(true)`) and only with the `http2` feature; off by default. Proved by conformance case 19.
+        c.h2c = if cfg!(feature = "http2") {
+            Support::Yes
+        } else {
+            Support::No
+        };
+        c.h2c_refusable = Support::Yes;
         c
     }
 
@@ -70,6 +77,22 @@ impl ServerAdapter for PoemAdapter {
                 #[cfg(feature = "http2")]
                 let tls = tls.alpn_protocols(&[b"h2", b"http/1.1"]);
                 let acceptor = crate::poem_tls::TlsPoemAcceptor::new(acceptor, tls);
+                let task = tokio::spawn(async move {
+                    let _ = poem::Server::new_with_acceptor(acceptor)
+                        .run_with_graceful_shutdown(
+                            endpoint,
+                            async move {
+                                let _ = stopped.await;
+                            },
+                            None,
+                        )
+                        .await;
+                });
+                return Ok(RunningServer::new(addr, stop, task, grace));
+            }
+            // Off by default: guard each connection so the HTTP/2 preface ends it (`preface_guard.rs`); `h2c(true)` serves poem's own acceptor.
+            if !opts.h2c {
+                let acceptor = crate::preface_guard::poem_acceptor::GuardedPoemAcceptor(acceptor);
                 let task = tokio::spawn(async move {
                     let _ = poem::Server::new_with_acceptor(acceptor)
                         .run_with_graceful_shutdown(

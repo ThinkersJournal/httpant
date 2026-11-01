@@ -387,8 +387,10 @@ pub struct Measured {
     pub streaming_response_bodies: Support,
     /// Case 9.
     pub graceful_shutdown: Support,
-    /// Cleartext HTTP/2 by prior knowledge (h2c): a probe, not a requirement (`h2_case::h2c_support`).
-    pub h2c: Support,
+    /// Cleartext HTTP/2 by prior knowledge (h2c) with nothing asked: `Yes` means the preface is accepted by default (`h2_case::h2c_support`).
+    pub h2c_by_default: Support,
+    /// The same when the server is started with `h2c(true)`; `No` also when it cannot be started so.
+    pub h2c_when_asked: Support,
 }
 
 /// `Yes` when the probe passed. A probe that fails says why on stderr, which a failing test prints: a bare `No` hides the reason.
@@ -416,7 +418,8 @@ pub async fn measure(s: &dyn Subject) -> Measured {
             &streaming_response(s).await,
         ),
         graceful_shutdown: support("graceful shutdown", &s.name(), &graceful_shutdown(s).await),
-        h2c: crate::h2_case::h2c_support(s).await,
+        h2c_by_default: crate::h2_case::h2c_support(s, false).await,
+        h2c_when_asked: crate::h2_case::h2c_support(s, true).await,
     }
 }
 

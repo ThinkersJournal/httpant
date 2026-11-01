@@ -25,6 +25,9 @@ pub struct ServeOptions {
     pub challenge: Option<Arc<dyn ChallengeResponder>>,
     /// Redirect cleartext requests for the listed hosts to HTTPS, see [`HttpsRedirect`](crate::HttpsRedirect) (default: none).
     pub https_redirect: Option<crate::HttpsRedirect>,
+    /// Serve cleartext HTTP/2 by prior knowledge (h2c) on `listener`; off by default, see [`ServeOptions::h2c`]. Ignored on a TLS listener, where
+    /// HTTP/2 is chosen by ALPN.
+    pub h2c: bool,
     /// Terminate TLS on `listener` with this acceptor (feature `tls`). Adapters whose [`Capabilities::tls`] is not `Yes` are refused before they start.
     #[cfg(feature = "tls")]
     pub tls: Option<crate::TlsAcceptor>,
@@ -40,10 +43,19 @@ impl ServeOptions {
             trusted_proxies: TrustedProxies::none(),
             challenge: None,
             https_redirect: None,
+            h2c: false,
             #[cfg(feature = "tls")]
             tls: None,
             grace: Grace::new(Some(DEFAULT_SHUTDOWN_GRACE)),
         }
+    }
+
+    /// Accept the HTTP/2 prior-knowledge preface on a cleartext listener (h2c). Off by default on every adapter that can refuse it, so one program
+    /// behaves the same whichever library it runs on; an adapter that cannot serve h2c returns [`Error::H2cNotSupported`] at start (see
+    /// [`Capabilities::h2c`](httpant_core::Capabilities)). Needs the `http2` feature.
+    pub fn h2c(mut self, on: bool) -> Self {
+        self.h2c = on;
+        self
     }
 
     /// Serve with these limits instead of the defaults.

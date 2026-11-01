@@ -164,6 +164,7 @@ mod tests {
                 id: "x".into(),
                 available: vec!["hyper"],
             },
+            Error::H2cNotSupported { adapter: "x" },
         ];
         for e in all {
             assert!(

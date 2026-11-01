@@ -6,14 +6,14 @@ rewrites it. Each adapter's `capabilities()` is compared with the measurement by
 `yes` that the suite cannot reproduce fails the build.
 
 <!-- matrix:start -->
-| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | terminates TLS | HTTP/2 (over TLS) | cleartext h2c (measured) | default body limit (bytes) |
-|---|---|---|---|---|---|---|---|---|
-| hyper | yes | yes | yes | no | yes | yes | no | 2097152 |
-| axum | yes | yes | yes | no | yes | yes | yes | 2097152 |
-| actix-web | yes | yes | yes | no | yes | no | no | 2097152 |
-| poem | yes | yes | yes | no | yes | yes | yes | 2097152 |
-| salvo | yes | yes | yes | no | yes | yes | yes | 2097152 |
-| warp | yes | yes | yes | no | no | no | yes | 2097152 |
+| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | terminates TLS | HTTP/2 (over TLS) | cleartext h2c by default (measured) | cleartext h2c when asked (measured) | default body limit (bytes) |
+|---|---|---|---|---|---|---|---|---|---|
+| hyper | yes | yes | yes | no | yes | yes | no | yes | 2097152 |
+| axum | yes | yes | yes | no | yes | yes | no | yes | 2097152 |
+| actix-web | yes | yes | yes | no | yes | no | no | no | 2097152 |
+| poem | yes | yes | yes | no | yes | yes | no | yes | 2097152 |
+| salvo | yes | yes | yes | no | yes | yes | no | yes | 2097152 |
+| warp | yes | yes | yes | no | no | no | yes | yes | 2097152 |
 <!-- matrix:end -->
 
 Client adapters, measured by the client cases against a raw-TCP peer (`client_suite.rs`):
@@ -41,13 +41,17 @@ Client adapters, measured by the client cases against a raw-TCP peer (`client_su
   offers `h2` only if the adapter serves it. For `yes` the case proves a client offering `h2` and `http/1.1` is given `h2` and answered over
   HTTP/2 with the request reported as `https`; for `no` with TLS `yes` (actix-web, since 0.5.25: its HTTP/2 is the `h2` 0.3 line, which `cargo deny` fails on with RUSTSEC-2026-0258) it
   proves the client is given `http/1.1`, never an `h2` the adapter cannot serve. warp does not terminate TLS.
-- *cleartext h2c (measured)*: a probe, **not a requirement** (nothing in the need list asks for it) and **not uniform**, shown as it is. The
-  probe sends the HTTP/2 connection preface and an empty SETTINGS frame to a cleartext listener and reads what comes back: `yes` is an HTTP/2
-  SETTINGS frame (the adapter's connection builder accepts h2c by prior knowledge), `no` is HTTP/1.1 text, a closed connection or silence.
-  Measured 2026-10-31 with the `http2` feature on: axum, poem, salvo and warp answer in HTTP/2; hyper (which HTTPAnt builds `http1_only` for
-  cleartext) and actix-web do not. Salvo was `no` before it served HTTP/2 over TLS (0.5.14): its connection builder detects the preface on any
-  stream once its own `http2` feature is on, so the h2c answer moved with the feature. The `yes` rows are the probe's own control (it can see
-  an HTTP/2 answer). The column does not say which behaviour is right; ROADMAP row 13 holds that decision.
+- *cleartext h2c by default / when asked (measured)*: cleartext HTTP/2 by prior knowledge is **off unless asked for** (`Server::h2c(true)`, PM
+  ruling 2026-11-01, `docs/H2C-POLICY.md`), and conformance case 19 holds each adapter to its declaration. The probe sends the HTTP/2 connection
+  preface and an empty SETTINGS frame to a cleartext listener and reads what comes back: `yes` is an HTTP/2 SETTINGS frame, `no` is HTTP/1.1
+  text, a closed connection or silence. Measured 2026-11-01 with the `http2` feature on:
+  - **hyper, axum, poem, salvo:** `no` by default, `yes` when asked. axum, poem and salvo have no setting for it in their libraries; HTTPAnt
+    stands between the connection and the library and ends a connection that begins with the preface (`preface_guard.rs`), unless asked.
+  - **actix-web:** `no`, and asking is an error at start that names h2c (it has no HTTP/2, RUSTSEC-2026-0258, row 15).
+  - **warp: `yes` by default, and that cannot be turned off.** warp's accept path is private (`Accept` is in a private module), so HTTPAnt cannot
+    stand between the connection and warp's hyper-util builder. Declared as `h2c_refusable: No`; the day a warp release makes the trait
+    nameable, the capability flips and this row changes. Behind an edge, a program on warp therefore accepts h2c on its cleartext port.
+  Without the `http2` feature no adapter serves h2c, and `h2c(true)` is the named error everywhere.
 - *non-`Send` handlers*: declared, not measured. The service contract is `Send`; actix-web (thread-per-core, `!Send` handlers) is the adapter this
   column is for (`docs/ACTIX-ADAPTER-NOTES.md`).
 - Cases 10 (keep-alive, `Connection: close`, `Expect: 100-continue`), 11 (concurrency) and 12 (HEAD) are required of every adapter; they have no

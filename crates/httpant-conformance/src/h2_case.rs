@@ -152,21 +152,23 @@ pub fn http2_alpn(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
     })
 }
 
-/// Cleartext HTTP/2 by prior knowledge (h2c), a probe and not a requirement: nothing in the need list asks for it, so an adapter either
-/// answers the HTTP/2 connection preface on a cleartext listener with HTTP/2 (`Yes`) or does not (`No`: it answers in HTTP/1.1 text, closes,
-/// or says nothing). Measured so the capability matrix can show the difference between adapters as it is.
-pub async fn h2c_support(s: &dyn Subject) -> Support {
+/// What a cleartext listener answers the HTTP/2 connection preface with, when started with `h2c` as given: `Ok(Yes)` is an HTTP/2 SETTINGS frame
+/// (the preface was accepted), `Ok(No)` is HTTP/1.1 text, a closed connection or silence, `Err` is a start-up failure (the message names it).
+async fn preface_answer(s: &dyn Subject, h2c: bool) -> Result<Support, String> {
     // The client preface, then an empty SETTINGS frame, which is what an HTTP/2 client sends first.
     const PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
     const EMPTY_SETTINGS: &[u8] = &[0, 0, 0, 4, 0, 0, 0, 0, 0];
     let (app, _gates) = app::app_with_gates();
-    let server = match s.start(app).await {
-        Ok(server) => server,
-        Err(e) => {
-            eprintln!("capability probe `h2c` could not start {}: {e}", s.name());
-            return Support::No;
-        }
-    };
+    let server = s
+        .start_with(
+            app,
+            Setup {
+                h2c,
+                ..Setup::default()
+            },
+        )
+        .await
+        .map_err(|e| e.to_string())?;
     let seen = async {
         let mut tcp = TcpStream::connect(server.addr()).await.ok()?;
         tcp.write_all(PREFACE).await.ok()?;
@@ -180,11 +182,111 @@ pub async fn h2c_support(s: &dyn Subject) -> Support {
     }
     .await;
     let _ = server.shutdown().await;
-    match seen {
+    Ok(match seen {
         // An HTTP/2 server's first frame is its SETTINGS frame: 3 bytes of length, then the type 4.
         Some(bytes) if bytes.len() >= 4 && bytes[3] == 4 && !bytes.starts_with(b"HTTP/") => {
             Support::Yes
         }
         _ => Support::No,
+    })
+}
+
+/// Cleartext HTTP/2 by prior knowledge (h2c), measured for the capability matrix: `h2c` is what the server was started with. A server that
+/// will not start with it (an adapter that cannot serve h2c) is `No`.
+pub async fn h2c_support(s: &dyn Subject, h2c: bool) -> Support {
+    match preface_answer(s, h2c).await {
+        Ok(answer) => answer,
+        Err(e) => {
+            eprintln!(
+                "capability probe `h2c` could not start {} (h2c {h2c}): {e}",
+                s.name()
+            );
+            Support::No
+        }
     }
+}
+
+/// An ordinary HTTP/1.1 request on a cleartext listener started with `h2c` as given is answered `200`: the switch must not cost HTTP/1.1 anything.
+async fn http1_still_works(s: &dyn Subject, h2c: bool) -> Outcome {
+    let (app, _gates) = app::app_with_gates();
+    let server = s
+        .start_with(
+            app,
+            Setup {
+                h2c,
+                ..Setup::default()
+            },
+        )
+        .await
+        .map_err(|e| format!("could not start (h2c {h2c}): {e}"))?;
+    let outcome = async {
+        let mut tcp = TcpStream::connect(server.addr())
+            .await
+            .map_err(|e| format!("connect: {e}"))?;
+        tcp.write_all(b"GET /a HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .await
+            .map_err(|e| format!("send: {e}"))?;
+        let mut reply = Vec::new();
+        let _ = tokio::time::timeout(WAIT, tcp.read_to_end(&mut reply)).await;
+        ensure!(
+            reply.starts_with(b"HTTP/1.1 200") && reply.ends_with(b"a"),
+            "with h2c {h2c}, an HTTP/1.1 request was not answered 200 with its body"
+        );
+        Ok(())
+    }
+    .await;
+    let _ = server.shutdown().await;
+    outcome
+}
+
+/// Case 19: cleartext HTTP/2 is off unless asked for, where the adapter can refuse it, and says so where it cannot.
+///
+/// By capability: `h2c_refusable: Yes` refuses the preface by default and `No` accepts it (the declaration is held to what happens, so a
+/// stale `No` fails too); `h2c: Yes` serves HTTP/2 when started with `h2c(true)` and `h2c: No` fails to start with the named error, never
+/// serving HTTP/1.1 where h2c was asked for; HTTP/1.1 keeps working in every mode that starts. `Unknown` fails. A subject that declares
+/// nothing (a mutant) is held to the hyper adapter's answers: refuses by default, serves when asked.
+pub fn h2c_switch(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
+    Box::pin(async move {
+        let (refusable, serves) = match s.declared() {
+            Some(c) => (c.h2c_refusable, c.h2c),
+            None => (Support::Yes, Support::Yes),
+        };
+        ensure!(
+            refusable != Support::Unknown && serves != Support::Unknown,
+            "the h2c capabilities are not established: declare `Yes` or `No` for `h2c` and `h2c_refusable`"
+        );
+        let by_default = preface_answer(s, false)
+            .await
+            .map_err(|e| format!("could not start with h2c off: {e}"))?;
+        if refusable == Support::Yes {
+            ensure!(
+                by_default == Support::No,
+                "declares `h2c_refusable: Yes` but a cleartext listener answered the HTTP/2 preface with HTTP/2 without being asked to"
+            );
+        } else {
+            ensure!(
+                by_default == Support::Yes,
+                "declares `h2c_refusable: No` (its library accepts the preface) but the preface was refused: the declaration is stale"
+            );
+        }
+        http1_still_works(s, false).await?;
+        if serves == Support::Yes {
+            let asked = preface_answer(s, true)
+                .await
+                .map_err(|e| format!("declares `h2c: Yes` but could not start with h2c on: {e}"))?;
+            ensure!(
+                asked == Support::Yes,
+                "declares `h2c: Yes` but a listener started with h2c on did not answer the HTTP/2 preface with HTTP/2"
+            );
+            http1_still_works(s, true).await?;
+        } else {
+            let started = preface_answer(s, true).await;
+            ensure!(
+                matches!(&started, Err(e) if e.contains("h2c")),
+                "declares `h2c: No` but a start with h2c on did not fail with an error that names h2c (got {:?})",
+                started.as_ref().map(|_| "a running server")
+            );
+        }
+        Ok(())
+    })
 }

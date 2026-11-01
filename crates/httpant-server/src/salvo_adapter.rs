@@ -51,6 +51,13 @@ impl ServerAdapter for SalvoAdapter {
         } else {
             Support::No
         };
+        // Cleartext HTTP/2 only when asked for (`h2c(true)`) and only with the `http2` feature; off by default. Proved by conformance case 19.
+        c.h2c = if cfg!(feature = "http2") {
+            Support::Yes
+        } else {
+            Support::No
+        };
+        c.h2c_refusable = Support::Yes;
         c
     }
 
@@ -68,6 +75,11 @@ impl ServerAdapter for SalvoAdapter {
                 #[cfg(feature = "http2")]
                 let tls = tls.alpn_protocols(&[b"h2", b"http/1.1"]);
                 let acceptor = crate::salvo_tls::TlsSalvoAcceptor::new(acceptor, tls);
+                return Ok(run(acceptor, svc, close, closed, addr, grace));
+            }
+            // Off by default: guard each connection so the HTTP/2 preface ends it (`preface_guard.rs`); `h2c(true)` serves salvo's own acceptor.
+            if !opts.h2c {
+                let acceptor = crate::preface_guard::salvo_acceptor::GuardedSalvoAcceptor(acceptor);
                 return Ok(run(acceptor, svc, close, closed, addr, grace));
             }
             Ok(run(acceptor, svc, close, closed, addr, grace))

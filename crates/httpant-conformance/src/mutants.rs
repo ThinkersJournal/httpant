@@ -69,6 +69,10 @@ pub enum Mutant {
     /// The TLS listener offers `h2` in front of a server that speaks only HTTP/1.1 (a server written for this mutant: every real adapter
     /// that terminates TLS serves HTTP/2).
     OffersH2WithoutServingIt,
+    /// A cleartext listener accepts the HTTP/2 prior-knowledge preface although `h2c` was not asked for.
+    H2cOnByDefault,
+    /// `h2c(true)` is asked for and the listener still refuses the HTTP/2 preface.
+    IgnoresH2cRequest,
 }
 
 impl Mutant {
@@ -113,6 +117,8 @@ impl Mutant {
             Mutant::NoBodyLimit => "no-body-limit",
             Mutant::ServeTlsInClear => "serve-tls-in-clear",
             Mutant::OffersH2WithoutServingIt => "offers-h2-without-serving-it",
+            Mutant::H2cOnByDefault => "h2c-on-by-default",
+            Mutant::IgnoresH2cRequest => "ignores-h2c-request",
             Mutant::IgnoreConnectionClose => "ignore-connection-close",
             Mutant::SkipExpectContinue => "skip-expect-continue",
         }
@@ -136,6 +142,8 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         | Mutant::NoBodyLimit
         | Mutant::ServeTlsInClear
         | Mutant::OffersH2WithoutServingIt
+        | Mutant::H2cOnByDefault
+        | Mutant::IgnoresH2cRequest
         | Mutant::IgnoreConnectionClose
         | Mutant::SkipExpectContinue => return svc,
         Mutant::FoldMethodToGet => fold_method_to_get,

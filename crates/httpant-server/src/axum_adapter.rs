@@ -39,6 +39,13 @@ impl ServerAdapter for AxumAdapter {
         } else {
             Support::No
         };
+        // Cleartext HTTP/2 only when asked for (`h2c(true)`) and only with the `http2` feature; off by default. Proved by conformance case 19.
+        c.h2c = if cfg!(feature = "http2") {
+            Support::Yes
+        } else {
+            Support::No
+        };
+        c.h2c_refusable = Support::Yes;
         c
     }
 
@@ -65,6 +72,15 @@ impl ServerAdapter for AxumAdapter {
                             .map(|c| c.0);
                         if let Some(peer) = peer {
                             req.extensions_mut().insert(PeerAddr(peer));
+                        }
+                        if let Some(c) = req
+                            .extensions()
+                            .get::<axum::extract::ConnectInfo<
+                                crate::preface_guard::axum_listener::GuardedPeer,
+                            >>()
+                            .copied()
+                        {
+                            req.extensions_mut().insert(PeerAddr(c.0.0));
                         }
                         #[cfg(feature = "tls")]
                         if let Some(c) = req
@@ -93,6 +109,21 @@ impl ServerAdapter for AxumAdapter {
                     let _ = axum::serve(
                         listener,
                         app.into_make_service_with_connect_info::<crate::tls_listener::TlsPeer>(),
+                    )
+                    .with_graceful_shutdown(async move {
+                        let _ = stopped.await;
+                    })
+                    .await;
+                });
+                return Ok(RunningServer::new(addr, stop, task, grace));
+            }
+            // Off by default: guard each connection so the HTTP/2 preface ends it (`preface_guard.rs`); `h2c(true)` serves axum's own listener.
+            if !opts.h2c {
+                let listener = crate::preface_guard::axum_listener::GuardedListener(listener);
+                let task = tokio::spawn(async move {
+                    let _ = axum::serve(
+                        listener,
+                        app.into_make_service_with_connect_info::<crate::preface_guard::axum_listener::GuardedPeer>(),
                     )
                     .with_graceful_shutdown(async move {
                         let _ = stopped.await;

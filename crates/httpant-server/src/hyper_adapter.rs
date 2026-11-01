@@ -40,6 +40,13 @@ impl ServerAdapter for HyperAdapter {
         } else {
             Support::No
         };
+        // Cleartext HTTP/2 only when asked for (`h2c(true)`) and only with the `http2` feature; off by default. Proved by conformance case 19.
+        c.h2c = if cfg!(feature = "http2") {
+            Support::Yes
+        } else {
+            Support::No
+        };
+        c.h2c_refusable = Support::Yes;
         c
     }
 
@@ -55,6 +62,7 @@ impl ServerAdapter for HyperAdapter {
             // This adapter serves HTTP/2, so its TLS listener offers it (first), HTTP/1.1 after.
             #[cfg(all(feature = "tls", feature = "http2"))]
             let tls = tls.map(|t| t.alpn_protocols(&[b"h2", b"http/1.1"]));
+            let h2c = opts.h2c;
             let (stop, mut stopped) = oneshot::channel::<()>();
             let task = tokio::spawn(async move {
                 let (drain, draining) = watch::channel(false);
@@ -73,9 +81,9 @@ impl ServerAdapter for HyperAdapter {
                                 if let Some(acceptor) = tls {
                                     // A failed handshake (unknown name, bad client, timeout) ends only this connection.
                                     let Ok(stream) = acceptor.accept(stream).await else { return };
-                                    return serve_conn(stream, peer, svc, draining, true).await;
+                                    return serve_conn(stream, peer, svc, draining, true, false).await;
                                 }
-                                serve_conn(stream, peer, svc, draining, false).await;
+                                serve_conn(stream, peer, svc, draining, false, h2c).await;
                             });
                         }
                         Some(_) = conns.join_next(), if !conns.is_empty() => {}
@@ -98,6 +106,7 @@ async fn serve_conn<I>(
     svc: BoxService,
     mut draining: watch::Receiver<bool>,
     over_tls: bool,
+    h2c: bool,
 ) where
     I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
@@ -114,12 +123,14 @@ async fn serve_conn<I>(
     // A connection that errors (peer reset, malformed request) ends only that connection.
     #[cfg(not(feature = "http2"))]
     let conn = http1::Builder::new().serve_connection(TokioIo::new(io), service);
-    // HTTP/2 only where TLS negotiated it: a cleartext listener is HTTP/1.1, as before (no h2c by prior knowledge).
+    // HTTP/2 where TLS negotiated it; a cleartext listener is HTTP/1.1 (no h2c by prior knowledge) unless `h2c(true)` was asked for.
+    #[cfg(not(feature = "http2"))]
+    let _ = h2c;
     #[cfg(feature = "http2")]
     let builder = {
         let builder =
             hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
-        if over_tls {
+        if over_tls || h2c {
             builder
         } else {
             builder.http1_only()

@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.35] - 2026-11-01
+
+- **Cleartext HTTP/2 (h2c) is off unless asked for (ROADMAP row 13, PM ruling 2026-11-01). Breaking for axum, poem and salvo users who relied on h2c on a cleartext listener** (it was on, by accident of their libraries): ask with `Server::h2c(true)` / `ServeOptions::h2c(true)` (feature `http2`). hyper (as before), axum, poem, salvo and actix-web now refuse the HTTP/2 preface on a cleartext listener by default and serve HTTP/1.1 as always; axum, poem and salvo, whose libraries have no setting, are guarded below the library (`preface_guard.rs`: the bytes pass through unchanged and unbuffered, and a connection whose first bytes spell `PRI * HTTP/2.0` is ended). **warp cannot be made to refuse it** (its accept path is private): it still accepts h2c, declared as `h2c_refusable: No` and shown in the capability matrix. An adapter that cannot serve h2c (actix-web, or any adapter without the `http2` feature) answers `h2c(true)` with the new `Error::H2cNotSupported` at start. New capabilities `Capabilities::h2c` and `h2c_refusable`, `require_h2c`, conformance case 19 (two mutants: h2c on by default, h2c request ignored), `tests/h2c.rs` (a real HTTP/2 client over h2c on hyper, axum, poem and salvo). Not published.
+
 ## [0.5.33] - 2026-11-01
 
 - ROADMAP row 13, step 1 (PM ruled 2026-11-01: opt-in, off by default): `docs/H2C-POLICY.md` records, from reading the sources (not run), that axum 0.8.9, poem 3.1.12, salvo_core 1.0.1 and warp 0.4.3 have no setting to refuse the h2c preface; axum, poem and salvo can be handled by wrapping their public accept path, warp cannot (private `Accept`). Docs only, no code change. Not published.
