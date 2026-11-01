@@ -9,6 +9,7 @@
 //! adapter             = "hyper"      # the web library, by id (see Server::with_adapter)
 //! addr                = "0.0.0.0:8080"
 //! shutdown_grace_secs = 30           # seconds shutdown() waits for requests in flight
+//! h2c                 = false        # accept cleartext HTTP/2 (feature `http2`); off unless set
 //! limits.max_uri_len      = 8192
 //! limits.max_headers      = 64
 //! limits.max_header_bytes = 16384
@@ -28,6 +29,7 @@ use crate::Limits;
 /// adapter             = "hyper"      # the web library, by id (see Server::with_adapter)
 /// addr                = "0.0.0.0:8080"
 /// shutdown_grace_secs = 30           # seconds shutdown() waits for requests in flight
+/// h2c                 = false        # accept cleartext HTTP/2 (feature `http2`); off unless set
 /// limits.max_uri_len      = 8192
 /// limits.max_headers      = 64
 /// limits.max_header_bytes = 16384
@@ -49,6 +51,9 @@ pub struct ServerSettings {
     pub addr: Option<String>,
     /// Seconds `shutdown()` waits for requests in flight before ending them.
     pub shutdown_grace_secs: Option<u64>,
+    /// Accept cleartext HTTP/2 by prior knowledge, see [`Server::h2c`](crate::Server::h2c). `true` on an adapter that cannot serve it makes
+    /// `serve`/`bind` fail with `Error::H2cNotSupported`, not fall back to HTTP/1.1.
+    pub h2c: Option<bool>,
     /// Request limits, see [`LimitsSettings`].
     pub limits: LimitsSettings,
 }
