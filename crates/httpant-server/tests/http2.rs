@@ -190,9 +190,8 @@ async fn the_server_limits_apply_over_http2() {
     }
 }
 
-/// The hyper adapter keeps a cleartext listener on HTTP/1.1. **Not yet uniform:** with the `http2` feature, axum's and poem's own connection
-/// builders accept the HTTP/2 prior-knowledge preface (h2c) on a cleartext listener, which hyper here refuses. Nothing in WebHostAnt's need list
-/// asks for h2c, so conformance does not constrain it (ROADMAP: decide the h2c policy); this test pins only what hyper chose.
+/// The hyper adapter keeps a cleartext listener on HTTP/1.1 unless `h2c(true)` is asked for; `tests/h2c.rs` and conformance case 19 hold the
+/// switch on every adapter. This test pins what hyper does by default.
 #[tokio::test]
 async fn a_cleartext_listener_stays_http1_even_with_the_http2_feature() {
     for id in ["hyper"] {

@@ -49,6 +49,8 @@ pub struct Setup {
     pub trusted_proxies: TrustedProxies,
     /// Terminate TLS with this acceptor (case 17).
     pub tls: Option<httpant_server::TlsAcceptor>,
+    /// Accept cleartext HTTP/2 by prior knowledge (case 19); off by default, as everywhere.
+    pub h2c: bool,
 }
 
 impl Default for Setup {
@@ -57,12 +59,15 @@ impl Default for Setup {
             grace: Some(LONG_GRACE),
             trusted_proxies: TrustedProxies::none(),
             tls: None,
+            h2c: false,
         }
     }
 }
 
 fn options(listener: std::net::TcpListener, setup: Setup) -> ServeOptions {
-    let opts = ServeOptions::new(listener).trusted_proxies(setup.trusted_proxies);
+    let opts = ServeOptions::new(listener)
+        .trusted_proxies(setup.trusted_proxies)
+        .h2c(setup.h2c);
     let opts = match setup.tls {
         Some(tls) => opts.tls(tls),
         None => opts,
@@ -94,6 +99,10 @@ impl<A: ServerAdapter> Subject for AdapterSubject<A> {
             // The rule `Server` applies: TLS is never started on an adapter that does not declare it.
             if setup.tls.is_some() {
                 httpant_server::require_tls(&self.0)?;
+            }
+            // And the same for h2c: never asked of an adapter that cannot serve it.
+            if setup.h2c {
+                httpant_server::require_h2c(&self.0)?;
             }
             let svc = apply_layers(app.router.into_service(), app.layers);
             self.0.serve(svc, options(free_listener()?, setup)).await
@@ -143,6 +152,10 @@ impl Subject for MutantSubject {
             Mutant::ServeTlsInClear => setup.tls = None,
             // Has a server of its own, below.
             Mutant::OffersH2WithoutServingIt => {}
+            // Accepts the HTTP/2 preface whether or not it was asked to.
+            Mutant::H2cOnByDefault => setup.h2c = true,
+            // Asked for h2c, serves HTTP/1.1 only.
+            Mutant::IgnoresH2cRequest => setup.h2c = false,
             _ => {}
         }
         Box::pin(async move {

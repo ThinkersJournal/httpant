@@ -73,6 +73,14 @@ pub enum Error {
         /// The adapter id.
         adapter: &'static str,
     },
+    /// Cleartext HTTP/2 was asked for on an adapter that cannot serve it; the server does not start, it never serves HTTP/1.1 instead.
+    #[error(
+        "the `{adapter}` adapter cannot serve cleartext HTTP/2 (h2c): leave h2c off, or use the hyper, axum, poem, salvo or warp adapter with the `http2` feature"
+    )]
+    H2cNotSupported {
+        /// The adapter id.
+        adapter: &'static str,
+    },
     /// A client request for a scheme that exists but whose cargo feature is off.
     #[error("scheme `{scheme}` is not compiled in: enable the `{feature}` feature")]
     SchemeNotCompiledIn {
@@ -128,6 +136,7 @@ impl Error {
             | Error::UnsupportedScheme { .. }
             | Error::SchemeNotCompiledIn { .. }
             | Error::TlsNotSupported { .. }
+            | Error::H2cNotSupported { .. }
             | Error::Tls(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::Timeout(_) | Error::ConnectTimeout(_) | Error::ReadTimeout(_) => {
                 StatusCode::GATEWAY_TIMEOUT

@@ -18,6 +18,8 @@ mod limits;
 mod poem_adapter;
 #[cfg(all(feature = "poem", feature = "tls"))]
 mod poem_tls;
+#[cfg(any(feature = "axum", feature = "poem", feature = "salvo"))]
+mod preface_guard;
 mod redirect;
 #[cfg(feature = "salvo")]
 mod salvo_adapter;
@@ -95,6 +97,17 @@ pub fn require_tls(adapter: &dyn ServerAdapter) -> Result<()> {
     }
 }
 
+/// `Err(Error::H2cNotSupported)` unless `adapter` declares [`Capabilities::h2c`](httpant_core::Capabilities) `Yes`: cleartext HTTP/2 is never
+/// asked of an adapter that cannot serve it (the adapters check nothing themselves).
+pub fn require_h2c(adapter: &dyn ServerAdapter) -> Result<()> {
+    if adapter.capabilities().h2c == httpant_core::Support::Yes {
+        return Ok(());
+    }
+    Err(Error::H2cNotSupported {
+        adapter: adapter.id(),
+    })
+}
+
 /// Describes routes and layers once, then runs them on an adapter chosen by id (default `hyper`).
 pub struct Server {
     adapter: Arc<dyn ServerAdapter>,
@@ -105,6 +118,7 @@ pub struct Server {
     trusted_proxies: TrustedProxies,
     challenge: Option<Arc<dyn ChallengeResponder>>,
     https_redirect: Option<HttpsRedirect>,
+    h2c: bool,
     #[cfg(feature = "tls")]
     tls: Option<TlsAcceptor>,
 }
@@ -127,6 +141,7 @@ impl Server {
             trusted_proxies: TrustedProxies::none(),
             challenge: None,
             https_redirect: None,
+            h2c: false,
             #[cfg(feature = "tls")]
             tls: None,
         }
@@ -174,6 +189,7 @@ impl Server {
             trusted_proxies: TrustedProxies::none(),
             challenge: None,
             https_redirect: None,
+            h2c: false,
             #[cfg(feature = "tls")]
             tls: None,
         }
@@ -203,6 +219,14 @@ impl Server {
     /// server: give it the [`acme_challenge`](Self::acme_challenge) responder and the challenge prefix keeps working there.
     pub fn redirect_to_https(mut self, redirect: HttpsRedirect) -> Self {
         self.https_redirect = Some(redirect);
+        self
+    }
+
+    /// Accept cleartext HTTP/2 by prior knowledge (h2c) on the listener. Off by default: a cleartext listener is HTTP/1.1 on every adapter whose web
+    /// library can be told so (the capability matrix names the one that cannot). An adapter that cannot serve h2c makes `serve`/`bind` fail with
+    /// [`Error::H2cNotSupported`]; it never serves HTTP/1.1 where h2c was asked for. Needs the `http2` feature; see `docs/H2C-POLICY.md`.
+    pub fn h2c(mut self, on: bool) -> Self {
+        self.h2c = on;
         self
     }
 
@@ -287,9 +311,13 @@ impl Server {
     pub async fn serve(self, listener: std::net::TcpListener) -> Result<RunningServer> {
         let adapter = Arc::clone(&self.adapter);
         let (limits, grace, proxies) = (self.limits, self.grace, self.trusted_proxies.clone());
+        if self.h2c {
+            require_h2c(&*adapter)?;
+        }
         let opts = ServeOptions::new(listener)
             .limits(limits)
-            .trusted_proxies(proxies);
+            .trusted_proxies(proxies)
+            .h2c(self.h2c);
         let opts = match self.challenge.clone() {
             Some(responder) => opts.acme_challenge(responder),
             None => opts,

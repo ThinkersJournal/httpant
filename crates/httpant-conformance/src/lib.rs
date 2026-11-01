@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt adapter conformance suite (design `docs/HTTPANT-DESIGN.md`, section 6).
 //!
-//! - [`CASES`]: eighteen cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
+//! - [`CASES`]: nineteen cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
 //!   minimal HTTP/1.1 client. The client is deliberately not HTTPAnt, hyper or any adapter, so a defect cannot hide on both ends of a test.
 //! - Every case lists the known-bad [`Mutant`]s it must fail on. [`check_case`] demands both halves: the reference passes **and** every mutant
 //!   fails. A case that passes on its mutant is itself a failing test.
@@ -59,7 +59,7 @@ impl std::fmt::Debug for Case {
 }
 
 /// The sixteen cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
-pub const CASES: [Case; 18] = [
+pub const CASES: [Case; 19] = [
     Case {
         number: 1,
         id: "method-fidelity",
@@ -199,6 +199,13 @@ pub const CASES: [Case; 18] = [
         mutants: &[Mutant::OffersH2WithoutServingIt],
         run: h2_case::http2_alpn,
     },
+    Case {
+        number: 19,
+        id: "h2c-switch",
+        requirement: "cleartext HTTP/2 (h2c) is off unless asked for (`h2c(true)`), on every adapter whose library can refuse it, and the capabilities say where it cannot: `h2c_refusable: Yes` refuses the HTTP/2 preface by default and `No` accepts it; `h2c: Yes` serves HTTP/2 when asked and `No` fails to start with an error that names h2c; HTTP/1.1 is unaffected in every mode that starts",
+        mutants: &[Mutant::H2cOnByDefault, Mutant::IgnoresH2cRequest],
+        run: h2_case::h2c_switch,
+    },
 ];
 
 /// Run every case against `subject`: `(case number, result)` for each.
@@ -264,6 +271,8 @@ mod tests {
     fn every_mutant_is_used_by_exactly_one_case() {
         let all = [
             Mutant::FoldMethodToGet,
+            Mutant::H2cOnByDefault,
+            Mutant::IgnoresH2cRequest,
             Mutant::ClampStatus,
             Mutant::NoMiddleware,
             Mutant::HashMapHeaders,
@@ -332,6 +341,7 @@ mod tests {
     case_test!(case_16_edge_origin, 15);
     case_test!(case_17_tls_terminate, 16);
     case_test!(case_18_http2_alpn, 17);
+    case_test!(case_19_h2c_switch, 18);
 
     #[test]
     fn client_cases_are_numbered_in_order_and_each_mutant_is_used_once() {
@@ -434,12 +444,21 @@ mod tests {
                 (
                     declared.streaming_request_bodies,
                     declared.streaming_response_bodies,
-                    declared.graceful_shutdown
+                    declared.graceful_shutdown,
+                    declared.h2c,
+                    declared.h2c_refusable
                 ),
                 (
                     measured.streaming_request_bodies,
                     measured.streaming_response_bodies,
-                    measured.graceful_shutdown
+                    measured.graceful_shutdown,
+                    measured.h2c_when_asked,
+                    // Refusable is the inverse of "accepted the preface although nothing asked for it".
+                    if measured.h2c_by_default == httpant_core::Support::Yes {
+                        httpant_core::Support::No
+                    } else {
+                        httpant_core::Support::Yes
+                    }
                 ),
                 "{}: declared capabilities differ from what the suite measured",
                 subject.name()
@@ -460,7 +479,7 @@ mod tests {
                 httpant_core::Support::Unknown => "unknown",
             };
             rows.push_str(&format!(
-                "| {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
+                "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n",
                 subject
                     .name()
                     .trim_matches('`')
@@ -472,12 +491,13 @@ mod tests {
                 cell(declared.local_handlers),
                 cell(declared.tls),
                 cell(declared.http2),
-                cell(m.h2c),
+                cell(m.h2c_by_default),
+                cell(m.h2c_when_asked),
                 declared.default_body_limit,
             ));
         }
         let table = format!(
-            "| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | terminates TLS | HTTP/2 (over TLS) | cleartext h2c (measured) | default body limit (bytes) |\n|---|---|---|---|---|---|---|---|---|\n{rows}"
+            "| adapter | streaming request bodies | streaming response bodies | graceful shutdown | non-`Send` handlers | terminates TLS | HTTP/2 (over TLS) | cleartext h2c by default (measured) | cleartext h2c when asked (measured) | default body limit (bytes) |\n|---|---|---|---|---|---|---|---|---|---|\n{rows}"
         );
         let mut client_rows = String::new();
         for subject in &client_adapters() {

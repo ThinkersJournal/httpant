@@ -39,6 +39,18 @@ impl ServerAdapter for WarpAdapter {
         c.tls = Support::No;
         // These adapters serve HTTP/1.1 only until their HTTP/2 slice; they never offer `h2` (conformance case 18).
         c.http2 = Support::No;
+        // With the `http2` feature warp's connection builder serves h2c and `Accept` is private (`docs/H2C-POLICY.md`), so HTTPAnt cannot refuse it:
+        // `h2c_refusable: No`, said in the capability matrix. Without the feature it is HTTP/1.1 only, as everywhere. Conformance case 19 holds both.
+        c.h2c = if cfg!(feature = "http2") {
+            Support::Yes
+        } else {
+            Support::No
+        };
+        c.h2c_refusable = if cfg!(feature = "http2") {
+            Support::No
+        } else {
+            Support::Yes
+        };
         c
     }
 

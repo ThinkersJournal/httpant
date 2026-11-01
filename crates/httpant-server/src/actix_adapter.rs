@@ -51,6 +51,9 @@ impl ServerAdapter for ActixAdapter {
         // frames queued without limit; patched only in h2 0.4.16), and `cargo deny` fails on it. So `h2` is never offered on this adapter's TLS
         // listener (conformance case 18 holds that: a client offering `h2` is given `http/1.1`).
         c.http2 = Support::No;
+        // No HTTP/2, so no h2c either: it always refuses the preface, and `h2c(true)` is a named error at start (conformance case 19).
+        c.h2c = Support::No;
+        c.h2c_refusable = Support::Yes;
         c
     }
 

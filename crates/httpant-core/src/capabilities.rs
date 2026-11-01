@@ -30,6 +30,12 @@ pub struct Capabilities {
     /// Serves HTTP/2 on TLS listeners, negotiated by ALPN `h2` (feature `http2` of `httpant-server`). An adapter that says `No` never offers `h2`, so
     /// a client always gets HTTP/1.1 from it.
     pub http2: Support,
+    /// Serves cleartext HTTP/2 by prior knowledge (h2c) when asked to (`h2c(true)`; feature `http2`). An adapter that says `No` makes a request for
+    /// h2c fail at start-up with a named error, never serving HTTP/1.1 instead.
+    pub h2c: Support,
+    /// Refuses cleartext HTTP/2 unless asked for it, which is the default everywhere it can be done. `No` means the adapter's web library accepts the
+    /// h2c preface on a cleartext listener and HTTPAnt cannot stop it (warp, `docs/H2C-POLICY.md`): said in the capability matrix, not hidden.
+    pub h2c_refusable: Support,
     /// The body limit the adapter applies unless told otherwise, in bytes.
     pub default_body_limit: usize,
 }
@@ -43,6 +49,8 @@ impl Default for Capabilities {
             local_handlers: Support::Unknown,
             tls: Support::Unknown,
             http2: Support::Unknown,
+            h2c: Support::Unknown,
+            h2c_refusable: Support::Unknown,
             default_body_limit: DEFAULT_BODY_LIMIT,
         }
     }
