@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-11-01
+
+- HANDOFF rewritten to current state (0.6.0 h2c off by default, 0.6.1 `ServerSettings.h2c`, the ConfigurAnt 0.6.3 end-to-end try, watch conditions as `WAIT:` lines). New `tools/crate-newer.sh` (not packaged): exit 0 when crates.io reports another latest version of a crate, used by those lines. Docs and a script, no library change. Not published.
+
 ## [0.6.1] - 2026-11-01
 
 - `ServerSettings` gains `h2c` (optional bool): `Server::apply` turns cleartext HTTP/2 on or off from a configuration, as `Server::h2c` does in code. `true` on an adapter that cannot serve it is the named `H2cNotSupported` error at start, not a quiet HTTP/1.1 server. An absent field changes nothing. Not published.
