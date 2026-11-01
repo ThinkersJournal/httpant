@@ -23,6 +23,7 @@ mod redirect;
 mod salvo_adapter;
 #[cfg(all(feature = "salvo", feature = "tls"))]
 mod salvo_tls;
+mod settings;
 #[cfg(feature = "tls")]
 mod tls;
 #[cfg(feature = "tls")]
@@ -53,6 +54,7 @@ pub use poem_adapter::PoemAdapter;
 pub use redirect::HttpsRedirect;
 #[cfg(feature = "salvo")]
 pub use salvo_adapter::SalvoAdapter;
+pub use settings::{LimitsSettings, ServerSettings};
 #[cfg(feature = "tls")]
 pub use tls::{
     CertSource, CertSourceError, DEFAULT_HANDSHAKE_TIMEOUT, FixedCert, ServedCert, ServerCert,
@@ -221,6 +223,20 @@ impl Server {
     pub fn no_shutdown_grace(mut self) -> Self {
         self.grace = Some(None);
         self
+    }
+
+    /// Apply settings read from a file, the environment or a command line, see [`ServerSettings`]. A field that is absent leaves what the
+    /// builder already has; an adapter id that is unknown or not compiled in is an error (it never falls back to another library). The
+    /// address in the settings is not bound here: pass it to `bind`.
+    pub fn apply(mut self, settings: &ServerSettings) -> Result<Self> {
+        if let Some(id) = &settings.adapter {
+            self.adapter = Self::with_adapter(id)?.adapter;
+        }
+        self.limits = settings.limits.over(self.limits);
+        if let Some(secs) = settings.shutdown_grace_secs {
+            self.grace = Some(Some(Duration::from_secs(secs)));
+        }
+        Ok(self)
     }
 
     /// Add a route for any method.
