@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.34] - 2026-11-01
+
+- **Settings (ROADMAP row 10, PM GO 2026-11-01):** `ServerSettings` (adapter id, `addr`, `shutdown_grace_secs`, `limits.max_uri_len` / `max_headers` / `max_header_bytes` / `max_body_bytes`) is a plain serde struct and `Server::apply(&settings)` puts it on the builder, so a file, the environment or a command line (ConfigurAnt's `Config::deserialize::<T>()`, `toml`, `serde_json`) can configure a server with no dependency on any of them. An absent field keeps the default and anything set earlier in code; an unknown key is an error that names it; an unknown adapter id is an error, never a fallback; a setting cannot remove a limit or the grace, nor carry a certificate. `addr` is carried but not bound by `apply`. `httpant-server` gains `serde` (derive) as a normal dependency (it was a dev-dependency; already in the lock file). Not tested against ConfigurAnt itself. Not published.
+
 ## [0.5.33] - 2026-11-01
 
 - ROADMAP row 13, step 1 (PM ruled 2026-11-01: opt-in, off by default): `docs/H2C-POLICY.md` records, from reading the sources (not run), that axum 0.8.9, poem 3.1.12, salvo_core 1.0.1 and warp 0.4.3 have no setting to refuse the h2c preface; axum, poem and salvo can be handled by wrapping their public accept path, warp cannot (private `Accept`). Docs only, no code change. Not published.

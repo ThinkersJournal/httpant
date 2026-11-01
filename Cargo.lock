@@ -754,7 +754,7 @@ dependencies = [
 
 [[package]]
 name = "httpant"
-version = "0.5.33"
+version = "0.5.34"
 dependencies = [
  "httpant-client",
  "httpant-core",
@@ -764,7 +764,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-bench"
-version = "0.5.33"
+version = "0.5.34"
 dependencies = [
  "actix-web",
  "axum",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-client"
-version = "0.5.33"
+version = "0.5.34"
 dependencies = [
  "bytes",
  "http-body",
@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-conformance"
-version = "0.5.33"
+version = "0.5.34"
 dependencies = [
  "bytes",
  "futures-util",
@@ -818,7 +818,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-core"
-version = "0.5.33"
+version = "0.5.34"
 dependencies = [
  "bytes",
  "futures-util",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-server"
-version = "0.5.33"
+version = "0.5.34"
 dependencies = [
  "actix-http",
  "actix-service",
@@ -853,6 +853,7 @@ dependencies = [
  "rustls",
  "salvo_core",
  "serde",
+ "serde_json",
  "tokio",
  "tokio-rustls",
  "tower",
