@@ -73,4 +73,28 @@ listener (a read-and-probe PR, no behaviour change; if one cannot, say so and ke
 setting, the capability and the case. If step 1 shows that "off" is impossible on more than one library, fall back to **B** with the
 column kept, because A would then be unbuildable.
 
-Nothing here is built and nothing was run for this document; the table is the matrix's measurement plus the `hyper_adapter.rs` source.
+The PM ruled on 2026-11-01: adopt C (opt-in, off by default); finish step 1 first, then build the default-off switch where a library can refuse and
+say plainly in the matrix where it cannot.
+
+## Step 1: can each library refuse the preface? (read 2026-11-01, not run)
+
+Read from the sources in `~/.cargo/registry` at the versions in `Cargo.lock` (axum 0.8.9, poem 3.1.12, salvo_core 1.0.1, warp 0.4.3, hyper-util
+0.1.21). **Nothing was compiled or run**; each "no setting" is a grep that found none (control: the same greps find `http1_only` in hyper-util's
+`auto::Builder` and `http2_mut` in salvo, which are there).
+
+| library | how it picks the protocol | a setting to refuse h2c? | an HTTPAnt-side way |
+|---|---|---|---|
+| axum 0.8.9 | `axum::serve` builds `hyper_util::server::conn::auto::Builder::new(..)` inside the task it spawns per connection (`serve/mod.rs`), enabling the h2 CONNECT protocol with the `http2` feature | **none found**: the builder is not reachable | wrap the listener (axum's `Listener` trait is public and HTTPAnt already wraps it for TLS, `tls_listener.rs`): the wrapper's I/O type would look at the first 24 bytes and refuse a connection that starts with the preface. Idea, unbuilt |
+| poem 3.1.12 | `server.rs` builds `auto::Builder`, then configures `.http2()` limits only | **none found** | wrap poem's `Acceptor` (public; HTTPAnt implements it for TLS) the same way |
+| salvo_core 1.0.1 | its own `conn/proto.rs` compares the first bytes with `H2_PREFACE` and serves HTTP/2 or HTTP/1; `HttpBuilder` exposes `http1_mut`/`http2_mut` | **none at run time**: `http2_mut` tunes HTTP/2, it does not switch it off; the `http2` cargo feature is all-or-nothing (also removes `h2` over TLS) | wrap salvo's `Acceptor` (public; HTTPAnt wraps it for TLS) |
+| warp 0.4.3 | `server.rs` builds `auto::Builder` and calls `.http1()` (tuning the HTTP/1 side), which does not remove h2 detection | **none found** | **none**: `Accept` is in a private module (the same `E0603` as for TLS, `docs/TLS-ADAPTER-PROBES.md`) so HTTPAnt cannot wrap warp's accept loop |
+
+What this means for the build step: a **default-off switch is plausible on axum, poem and salvo** by wrapping their accept path so a connection whose
+first bytes are the preface is refused before the library sees them (one shared helper, not three), **not possible on warp** with warp 0.4.3, and
+already so on hyper (`http1_only`) and actix-web (no HTTP/2). Warp would then be declared `h2c: yes` (it cannot be turned off) and the matrix
+and `README` must say so plainly. The wrapper has a cost to measure when built: every cleartext connection pays a read of up to 24 bytes before the
+library sees it, and a slow client that sends fewer than 24 bytes must not be held longer than the library would have held it (the library's own
+header timeout, if any, starts later). That is the case the build must add a mutant for.
+
+The pieces **not** checked: that the wrapper really stops each library from answering h2c (it must be probed, and the existing probe
+`h2_case::h2c_support` is the check); that wrapping does not disturb graceful shutdown or the trusted-proxy `Origin` path.

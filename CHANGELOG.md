@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.33] - 2026-11-01
+
+- ROADMAP row 13, step 1 (PM ruled 2026-11-01: opt-in, off by default): `docs/H2C-POLICY.md` records, from reading the sources (not run), that axum 0.8.9, poem 3.1.12, salvo_core 1.0.1 and warp 0.4.3 have no setting to refuse the h2c preface; axum, poem and salvo can be handled by wrapping their public accept path, warp cannot (private `Accept`). Docs only, no code change. Not published.
+
 ## [0.5.32] - 2026-10-31
 
 - HANDOFF rewritten to current state (0.5.23 to 0.5.31 merged, rows 9, 10 and 13 waiting on the PM, peers retired for Synapse). ROADMAP row 4 says slices (a) and (b) are done and no longer says "PR open" for work that has merged; row 15 and the warp TLS blocker re-checked (HANDOFF). Docs only, no code change. Not published.
