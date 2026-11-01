@@ -133,3 +133,83 @@ async fn the_shutdown_grace_from_settings_ends_a_request_that_never_finishes() {
     );
     pending.abort();
 }
+
+/// What a listener answers the HTTP/2 preface plus an empty SETTINGS frame with: `true` when it is HTTP/2.
+#[cfg(feature = "http2")]
+async fn answers_h2c(server: &httpant_server::RunningServer) -> bool {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut tcp = tokio::net::TcpStream::connect(server.addr()).await.unwrap();
+    tcp.write_all(b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n")
+        .await
+        .unwrap();
+    tcp.write_all(&[0, 0, 0, 4, 0, 0, 0, 0, 0]).await.unwrap();
+    let mut got = [0u8; 16];
+    let n = tokio::time::timeout(Duration::from_secs(5), tcp.read(&mut got))
+        .await
+        .unwrap_or(Ok(0))
+        .unwrap_or(0);
+    n >= 4 && got[3] == 4 && !got[..n].starts_with(b"HTTP/")
+}
+
+#[cfg(feature = "http2")]
+#[tokio::test]
+async fn h2c_from_settings_turns_cleartext_http2_on_and_off() {
+    // Absent: off, as without settings (control for the two cases below).
+    let server = Server::new()
+        .apply(&settings("{}"))
+        .unwrap()
+        .get("/", || async { "ok" })
+        .bind("127.0.0.1:0")
+        .await
+        .unwrap();
+    assert!(!answers_h2c(&server).await, "h2c on without being asked");
+    server.shutdown().await.unwrap();
+    // True: on.
+    let server = Server::new()
+        .apply(&settings(r#"{"h2c": true}"#))
+        .unwrap()
+        .get("/", || async { "ok" })
+        .bind("127.0.0.1:0")
+        .await
+        .unwrap();
+    assert!(
+        answers_h2c(&server).await,
+        "h2c asked for in settings, not served"
+    );
+    server.shutdown().await.unwrap();
+    // False after code turned it on: off again (settings replace what the builder had).
+    let server = Server::new()
+        .h2c(true)
+        .apply(&settings(r#"{"h2c": false}"#))
+        .unwrap()
+        .get("/", || async { "ok" })
+        .bind("127.0.0.1:0")
+        .await
+        .unwrap();
+    assert!(
+        !answers_h2c(&server).await,
+        "h2c: false in settings did not turn it off"
+    );
+    server.shutdown().await.unwrap();
+}
+
+#[cfg(all(feature = "http2", feature = "actix-web"))]
+#[tokio::test]
+async fn h2c_from_settings_on_an_adapter_that_cannot_serve_it_is_a_named_error() {
+    let err = Server::new()
+        .apply(&settings(r#"{"adapter": "actix-web", "h2c": true}"#))
+        .unwrap()
+        .bind("127.0.0.1:0")
+        .await
+        .map(|_| ())
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            Error::H2cNotSupported {
+                adapter: "actix-web"
+            }
+        ),
+        "{err}"
+    );
+}

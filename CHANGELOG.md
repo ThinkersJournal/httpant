@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-11-01
+
+- `ServerSettings` gains `h2c` (optional bool): `Server::apply` turns cleartext HTTP/2 on or off from a configuration, as `Server::h2c` does in code. `true` on an adapter that cannot serve it is the named `H2cNotSupported` error at start, not a quiet HTTP/1.1 server. An absent field changes nothing. Not published.
+
 ## [0.6.0] - 2026-11-01
 
 - **Breaking (pre-1.0: the second number): cleartext HTTP/2 (h2c) is off unless asked for (ROADMAP row 13, PM ruling 2026-11-01).** It hit axum, poem and salvo users who relied on h2c on a cleartext listener (it was on, by accident of their libraries). **Migration: to keep h2c, call `Server::h2c(true)`** (or `ServeOptions::h2c(true)`; feature `http2`). Ask with `Server::h2c(true)` / `ServeOptions::h2c(true)` (feature `http2`). hyper (as before), axum, poem, salvo and actix-web now refuse the HTTP/2 preface on a cleartext listener by default and serve HTTP/1.1 as always; axum, poem and salvo, whose libraries have no setting, are guarded below the library (`preface_guard.rs`: the bytes pass through unchanged and unbuffered, and a connection whose first bytes spell `PRI * HTTP/2.0` is ended). **warp cannot be made to refuse it** (its accept path is private): it still accepts h2c, declared as `h2c_refusable: No` and shown in the capability matrix. An adapter that cannot serve h2c (actix-web, or any adapter without the `http2` feature) answers `h2c(true)` with the new `Error::H2cNotSupported` at start. New capabilities `Capabilities::h2c` and `h2c_refusable`, `require_h2c`, conformance case 19 (two mutants: h2c on by default, h2c request ignored), `tests/h2c.rs` (a real HTTP/2 client over h2c on hyper, axum, poem and salvo). Not published.

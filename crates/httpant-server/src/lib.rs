@@ -257,6 +257,9 @@ impl Server {
             self.adapter = Self::with_adapter(id)?.adapter;
         }
         self.limits = settings.limits.over(self.limits);
+        if let Some(on) = settings.h2c {
+            self.h2c = on;
+        }
         if let Some(secs) = settings.shutdown_grace_secs {
             self.grace = Some(Some(Duration::from_secs(secs)));
         }
