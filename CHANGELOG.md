@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-11-08
+
+- Fix: `ServerCert::from_pem` and `from_der` refused a certificate carrying a **critical** `acmeIdentifier` extension (RFC 8737, which requires it critical) with "private key does not match the certificate", so a TLS-ALPN-01 challenge certificate could not be built. Cause: they called rustls `CertifiedKey::keys_match`, which parses the certificate like a validator and rejects any critical extension it does not know. They now compare the private key's public key with the leaf's SubjectPublicKeyInfo directly (x509-parser, already a `tls` dependency); a mismatched key, an unparseable leaf, an empty chain and an unsupported key type are still refused. Reported by WebServAnt at 0.5.22. Red first: `a_certificate_with_an_acme_identifier_extension_is_accepted_critical_or_not` failed on `critical=true` before the change. Not published.
+
 ## [0.6.2] - 2026-11-01
 
 - HANDOFF rewritten to current state (0.6.0 h2c off by default, 0.6.1 `ServerSettings.h2c`, the ConfigurAnt 0.6.3 end-to-end try, watch conditions as `WAIT:` lines). New `tools/crate-newer.sh` (not packaged): exit 0 when crates.io reports another latest version of a crate, used by those lines; a `.gitattributes` keeps `*.sh` LF on Windows checkouts. Docs and a script, no library change. Not published.
