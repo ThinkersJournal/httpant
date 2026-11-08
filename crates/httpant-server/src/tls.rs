@@ -56,10 +56,22 @@ impl ServerCert {
         let signing = provider::sign::any_supported_type(&key).map_err(|_| {
             Error::Tls("private key is not a supported type (RSA, ECDSA or Ed25519)".into())
         })?;
+        // Not `CertifiedKey::keys_match`: it parses the certificate as a validator would and refuses one with a critical extension it does not
+        // know, which RFC 8737 *requires* of a TLS-ALPN-01 challenge certificate (`acmeIdentifier`). Only the two public keys are compared here.
+        let leaf = chain
+            .first()
+            .ok_or_else(|| Error::Tls("certificate chain holds no certificate".into()))?;
+        let (_, parsed) = x509_parser::parse_x509_certificate(leaf.as_ref())
+            .map_err(|_| Error::Tls("leaf certificate is not a valid X.509 certificate".into()))?;
+        let key_matches = signing
+            .public_key()
+            .is_some_and(|spki| spki.as_ref() == parsed.tbs_certificate.subject_pki.raw);
+        if !key_matches {
+            return Err(Error::Tls(
+                "private key does not match the certificate".into(),
+            ));
+        }
         let certified = CertifiedKey::new(chain, signing);
-        certified
-            .keys_match()
-            .map_err(|_| Error::Tls("private key does not match the certificate".into()))?;
         Ok(Self {
             certified: Arc::new(certified),
         })

@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-11-08
+
+- Fix: `ServerCert::from_pem` and `from_der` refused a certificate carrying a **critical** `acmeIdentifier` extension (RFC 8737, which requires it critical) with "private key does not match the certificate", so a TLS-ALPN-01 challenge certificate could not be built. Cause: they called rustls `CertifiedKey::keys_match`, which parses the certificate like a validator and rejects any critical extension it does not know. They now compare the private key's public key with the leaf's SubjectPublicKeyInfo directly (x509-parser, already a `tls` dependency); a mismatched key, an unparseable leaf, an empty chain and an unsupported key type are still refused. Reported by WebServAnt at 0.5.22. Red first: `a_certificate_with_an_acme_identifier_extension_is_accepted_critical_or_not` failed on `critical=true` before the change. Not published.
+
 ## [0.7.0] - 2026-11-08
 
 - **Breaking:** the minimum supported Rust version is now **1.89** (was 1.88; `rust-version` in `Cargo.toml`, and the `msrv` CI job). Reason: `cargo deny` reports RUSTSEC-2026-0446, -0448 and -0455 against `actix-http` 3.20.0 and RUSTSEC-2026-0447 against `actix-web` 4.18.1, and the patched `actix-http` 3.20.4 and `actix-web` 4.18.2 need Rust 1.89. `Cargo.lock` now takes those two versions; `cargo deny check` is clean again without touching `deny.toml`. The `actix-http/http2` feature stays off (3.20.4 still depends on `h2 ^0.3.27`; ROADMAP row 15 is unchanged). Not published.

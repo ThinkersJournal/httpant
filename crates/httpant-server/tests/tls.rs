@@ -292,6 +292,40 @@ fn the_private_key_is_not_in_debug_output_or_errors() {
     drop(other);
 }
 
+/// A self-signed certificate for `localhost` carrying an `acmeIdentifier` extension (RFC 8737, OID 1.3.6.1.5.5.7.1.31) with the given criticality.
+fn acme_identifier_cert(critical: bool) -> (String, String) {
+    let mut params = rcgen::CertificateParams::new(vec!["localhost".to_owned()]).unwrap();
+    // The extension value is a DER OCTET STRING holding a SHA-256 digest (32 bytes).
+    let mut value = vec![0x04, 0x20];
+    value.extend_from_slice(&[7u8; 32]);
+    let mut ext = rcgen::CustomExtension::from_oid_content(&[1, 3, 6, 1, 5, 5, 7, 1, 31], value);
+    ext.set_criticality(critical);
+    params.custom_extensions.push(ext);
+    let key = rcgen::KeyPair::generate().unwrap();
+    let cert = params.self_signed(&key).unwrap();
+    (cert.pem(), key.serialize_pem())
+}
+
+#[test]
+fn a_certificate_with_an_acme_identifier_extension_is_accepted_critical_or_not() {
+    // RFC 8737 requires the extension to be critical, and a TLS-ALPN-01 challenge certificate is exactly that.
+    for critical in [true, false] {
+        let (cert_pem, key_pem) = acme_identifier_cert(critical);
+        let made = ServerCert::from_pem(cert_pem.as_bytes(), key_pem.as_bytes());
+        assert!(made.is_ok(), "critical={critical}: {:?}", made.err());
+    }
+}
+
+#[test]
+fn a_mismatched_key_is_still_refused_when_the_certificate_has_a_critical_extension() {
+    let (cert_pem, _) = acme_identifier_cert(true);
+    let other = make_cert("other.test");
+    let err = ServerCert::from_pem(cert_pem.as_bytes(), other.key_pem.as_bytes())
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("does not match"), "{err}");
+}
+
 struct NoTls;
 
 impl ServerAdapter for NoTls {
