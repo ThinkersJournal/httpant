@@ -215,7 +215,7 @@ framework's own native middleware is not used; that is intended (agnosticism ove
   1. **HTTPAnt does not depend on ConfigurAnt.** `deserialize` takes the caller's own struct, so HTTPAnt can offer a plain serde-deserializable
      settings struct and ConfigurAnt fills it with no link between the crates. This reverses the earlier sketch ("the builder takes a `ServerConfig`
      that ConfigurAnt can fill" stays true, but nothing needs a dependency). A dependency would also cost every HTTPAnt user: ConfigurAnt's
-     `rust-version` is **1.95** against HTTPAnt's 1.88, and its default dependencies include `clap`, `sha2` and `toml`.
+     `rust-version` is **1.95** against HTTPAnt's 1.89, and its default dependencies include `clap`, `sha2` and `toml`.
   2. The shape would be a struct such as `ServerSettings { adapter: Option<String>, addr: Option<String>, shutdown_grace_secs: Option<u64>,
      limits: LimitsSettings { max_target_bytes, max_headers, max_header_bytes, max_body_bytes } }` (every field optional so the defaults of
      `Limits` stay the defaults) with `Server::apply(&settings)`, behind no new feature (`httpant-core` takes `serde` in the extractors PR, #48, 0.5.28), and

@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-08
+
+- **Breaking:** the minimum supported Rust version is now **1.89** (was 1.88; `rust-version` in `Cargo.toml`, and the `msrv` CI job). Reason: `cargo deny` reports RUSTSEC-2026-0446, -0448 and -0455 against `actix-http` 3.20.0 and RUSTSEC-2026-0447 against `actix-web` 4.18.1, and the patched `actix-http` 3.20.4 and `actix-web` 4.18.2 need Rust 1.89. `Cargo.lock` now takes those two versions; `cargo deny check` is clean again without touching `deny.toml`. The `actix-http/http2` feature stays off (3.20.4 still depends on `h2 ^0.3.27`; ROADMAP row 15 is unchanged). Not published.
+
 ## [0.6.2] - 2026-11-01
 
 - HANDOFF rewritten to current state (0.6.0 h2c off by default, 0.6.1 `ServerSettings.h2c`, the ConfigurAnt 0.6.3 end-to-end try, watch conditions as `WAIT:` lines). New `tools/crate-newer.sh` (not packaged): exit 0 when crates.io reports another latest version of a crate, used by those lines; a `.gitattributes` keeps `*.sh` LF on Windows checkouts. Docs and a script, no library change. Not published.

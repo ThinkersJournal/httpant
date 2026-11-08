@@ -36,7 +36,7 @@ WAIT: warp releases a version other than 0.4.3 (warp TLS, row 4) | check: bash t
   branch (`git worktree remove`, `git worktree prune`, `git branch -D`; remote with `gh api -X DELETE`, verify absent with a control).
 - No `#[ignore]`. Never weaken `deny.toml`. Every pushed change bumps version + CHANGELOG (placeholder); `Cargo.lock` must match. A breaking change is the second number.
 - Before every push: `cargo fmt --all --check`, `cargo clippy --all-targets --locked -- -D warnings` (per feature/adapter when changed),
-  `RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps`, `cargo test --locked --no-fail-fast`, `cargo deny check`, publish dry-run, MSRV 1.88 check. Then PR,
+  `RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps`, `cargo test --locked --no-fail-fast`, `cargo deny check`, publish dry-run, MSRV 1.89 check. Then PR,
   watch CI, count unresolved `reviewThreads`, send `[READY] httpant#N head= merge= checks= red= threads=`. No network text in assertion messages (CodeQL).
 - Subagents: pin `model: sonnet`. Scratch files go in the session scratchpad. Use the Write tool for scripts.
 - Stale files to fix when touched: `CONTRIBUTING.md`, `.github/copilot-instructions.md` still describe the old crate.
