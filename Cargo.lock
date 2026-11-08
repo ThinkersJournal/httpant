@@ -21,9 +21,9 @@ dependencies = [
 
 [[package]]
 name = "actix-http"
-version = "3.20.0"
+version = "3.20.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d20a22850ea7fecad12c5f8cd97d246c3af1f04ef400033977c2f13425c45816"
+checksum = "ca31632394627202b3e49ec4a4c10389448fc5b81ae97b6805069be42bbe31d6"
 dependencies = [
  "actix-codec",
  "actix-service",
@@ -111,9 +111,9 @@ dependencies = [
 
 [[package]]
 name = "actix-web"
-version = "4.18.1"
+version = "4.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81f8da0d2ae4200dde8773d72ba47a65c220b251ba7b9248db5bd263c247e959"
+checksum = "697d10a06f7a550791dcb963e3090aa5c65c4d94c029114814a4bd652f30f0b4"
 dependencies = [
  "actix-codec",
  "actix-http",
@@ -530,7 +530,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -754,7 +754,7 @@ dependencies = [
 
 [[package]]
 name = "httpant"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "httpant-client",
  "httpant-core",
@@ -764,7 +764,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-bench"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "actix-web",
  "axum",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-client"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "bytes",
  "http-body",
@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-conformance"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "bytes",
  "futures-util",
@@ -818,7 +818,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-core"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "bytes",
  "futures-util",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-server"
-version = "0.6.2"
+version = "0.7.0"
 dependencies = [
  "actix-http",
  "actix-service",
@@ -1549,7 +1549,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1879,7 +1879,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
