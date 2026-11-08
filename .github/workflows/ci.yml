@@ -83,10 +83,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Rust 1.88
+      - name: Install Rust 1.89
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
-          toolchain: 1.88.0
+          toolchain: 1.89.0
 
       - name: cargo check on the minimum version
         run: cargo check --locked -p httpant -p httpant-core -p httpant-server -p httpant-client --all-targets
