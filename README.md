@@ -83,7 +83,7 @@ so the same program behaves the same on each. What each one does, as measured an
 
 - It is not a web framework: no ORM, auth, sessions or templating.
 - The client calls `https://` only with the `https` feature (`cargo add httpant --features https`): rustls, TLS 1.2 and 1.3, the bundled Mozilla
-  roots plus any CA you add with `add_root_pem`, the certificate and the host name verified, and no switch to turn that off. **rustls does not check
+  roots (or, opt-in, the operating system's store: `root_store(RootStore::Os | Both)`) plus any CA you add with `add_root_pem`, the certificate and the host name verified, and no switch to turn that off. **rustls does not check
   certificate revocation**, so a certificate that was revoked but has not expired is still accepted. Without the feature an `https://` URL is an error
   that names it. The client follows no redirects and uses no proxy. For a URL someone else chose (a health probe), `Client::builder().refuse_private_addresses(true)` refuses loopback, private-network, link-local (the cloud metadata address) and other non-public addresses, judged on the address actually connected to.
 - TLS termination is in hyper, axum, actix-web, poem and salvo; warp serves behind an edge that terminates it, and refuses a TLS acceptor by name

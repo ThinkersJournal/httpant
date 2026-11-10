@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2026-11-10
+
+- **Client https, ROADMAP row 14 slice 3a (OS root store):** `ClientBuilder::root_store(RootStore::Bundled | Os | Both)`; the default stays `Bundled` (Mozilla's roots, the same trust everywhere), `Os` trusts only the platform's store (Windows, macOS, the system bundle on Linux; `rustls-native-certs` 0.8, only in the `https` feature), `Both` trusts the two. An empty or unreadable store is a `Tls` error from `build`, never a client that trusts nothing, and never a quiet fall back to the bundled set. `add_root_pem` works with any choice. Without the `https` feature a non-default choice is an error that names the feature. Tested: the three choices build here, and the no-feature error; **not** tested: a real handshake against a CA that only the OS store trusts (nothing here can install one). Proxy and opt-in redirects (slices 3b, 3c) not started. Not published.
+
 ## [0.7.2] - 2026-11-10
 
 - Docs only: ROADMAP row 14 no longer says slice 2 (private-address guard) is in review (published as 0.5.22); HANDOFF rewritten after 0.7.1 was published. Not published.

@@ -33,9 +33,25 @@ type Connector = hyper_rustls::HttpsConnector<Guarded>;
 #[cfg(not(feature = "https"))]
 type Connector = Guarded;
 
+/// Which certificate authorities an `https://` connection trusts, besides any added with `add_root_pem`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RootStore {
+    /// Mozilla's set, compiled in: the same trust on every machine. The default.
+    #[default]
+    Bundled,
+    /// Only the platform's own store (Windows, macOS, or the system bundle on Linux), so a corporate or school root is trusted. An unreadable or
+    /// empty store is an error from `build`, never "trust nothing" or a quiet fall back to the bundled set.
+    Os,
+    /// The bundled set and the platform's store together.
+    Both,
+}
+
 /// What the builder hands the adapter.
 #[derive(Clone, Debug)]
 pub(crate) struct Settings {
+    /// Whose roots to trust.
+    pub(crate) root_store: RootStore,
     pub(crate) connect_timeout: Duration,
     pub(crate) read_timeout: Duration,
     /// Refuse to connect to loopback, private, link-local and other non-public addresses.
@@ -47,6 +63,7 @@ pub(crate) struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            root_store: RootStore::Bundled,
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             read_timeout: DEFAULT_READ_TIMEOUT,
             refuse_private: false,
@@ -83,7 +100,10 @@ impl HyperClientAdapter {
         let guarded = GuardConnector::new(http, settings.refuse_private);
         #[cfg(feature = "https")]
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
-            .with_tls_config(tls::client_config(&settings.extra_roots_pem)?)
+            .with_tls_config(tls::client_config(
+                settings.root_store,
+                &settings.extra_roots_pem,
+            )?)
             .https_or_http()
             .enable_http1()
             .wrap_connector(guarded);
@@ -92,6 +112,11 @@ impl HyperClientAdapter {
             if !settings.extra_roots_pem.is_empty() {
                 return Err(Error::Tls(
                     "add_root_pem needs https: enable the `https` feature".to_owned(),
+                ));
+            }
+            if settings.root_store != RootStore::Bundled {
+                return Err(Error::Tls(
+                    "root_store needs https: enable the `https` feature".to_owned(),
                 ));
             }
             guarded
@@ -297,9 +322,26 @@ mod tls {
 
     /// TLS 1.2 and 1.3, the ring provider (as the server), the bundled Mozilla roots plus any PEM roots the caller added. A PEM that holds no
     /// certificate is an error: the client never ends up trusting less than was asked, nor more.
-    pub(super) fn client_config(extra_roots_pem: &[Vec<u8>]) -> Result<rustls::ClientConfig> {
+    pub(super) fn client_config(
+        store: super::RootStore,
+        extra_roots_pem: &[Vec<u8>],
+    ) -> Result<rustls::ClientConfig> {
+        use super::RootStore;
         let mut roots = RootCertStore::empty();
-        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        if store != RootStore::Os {
+            roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        }
+        if store != RootStore::Bundled {
+            // Load failures of single entries are tolerated (a platform store can hold a certificate rustls cannot parse); no usable root at all is not.
+            let native = rustls_native_certs::load_native_certs();
+            let (added, _ignored) = roots.add_parsable_certificates(native.certs);
+            if added == 0 {
+                return Err(Error::Tls(
+                    "the operating system's certificate store gave no usable root certificate: use RootStore::Bundled, or add_root_pem for your CA"
+                        .to_owned(),
+                ));
+            }
+        }
         for pem in extra_roots_pem {
             let mut found = 0usize;
             for cert in CertificateDer::pem_slice_iter(pem) {
