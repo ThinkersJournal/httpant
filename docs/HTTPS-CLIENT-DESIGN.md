@@ -103,7 +103,7 @@ the target. The proxy slice must say so in its documentation and refuse "guard o
 | 6 | status, headers, bounded body, 429 unchanged | already true; add a test that `Retry-After` and a `429` arrive unchanged | 1 |
 | 7 | finite timeouts: connect, whole request, idle | builder defaults (proposal: connect 10 s, request 30 s, idle read 30 s), each settable; the error names which fired (a new `Error::Timeout` kind, not three strings) | 1 |
 | 8 | redirects off by default; opt-in follow with a cap | off already (measured); opt-in follow above the adapter: cap, never https to http, `Authorization` dropped when the host changes | 3 (default-off part is already true) |
-| 9 | explicit proxy | `proxy(url)` with CONNECT for https; env variables only if asked | 3 |
+| 9 | explicit proxy | `proxy(url)` with CONNECT for https; env variables only if asked | 3 (done in 0.7.4: https by CONNECT, http:// proxy address only) |
 | 10 | private-address guard | decision 4 | 2 |
 | 11 | no retry of non-idempotent requests | the client never retries; say so in the docs and test it | 1 |
 | 12 | no secrets in errors | the token never reaches an error because only the sensitive header holds it; **fix `InvalidUrl`** to print scheme, host and path, not the query; `Request` errors carry hyper's text, which is checked by a test with a token in the query | 1 |

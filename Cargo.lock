@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "httpant"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "httpant-client",
  "httpant-core",
@@ -780,7 +780,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-bench"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "actix-web",
  "axum",
@@ -797,7 +797,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-client"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "bytes",
  "http-body",
@@ -814,7 +814,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-conformance"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "bytes",
  "futures-util",
@@ -835,7 +835,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-core"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "bytes",
  "futures-util",
@@ -851,7 +851,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-server"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "actix-http",
  "actix-service",
@@ -933,6 +933,7 @@ version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddc03d96684f9226b8a787cdb71488417b53ab5ea8fdb1dac946cb9431cc8bff"
 dependencies = [
+ "base64 0.23.1",
  "bytes",
  "futures-channel",
  "futures-util",
@@ -940,7 +941,9 @@ dependencies = [
  "http-body",
  "httparse",
  "hyper",
+ "ipnet",
  "libc",
+ "percent-encoding",
  "pin-project-lite",
  "socket2",
  "tokio",
@@ -1067,6 +1070,12 @@ dependencies = [
  "equivalent",
  "hashbrown",
 ]
+
+[[package]]
+name = "ipnet"
+version = "2.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
 
 [[package]]
 name = "itoa"

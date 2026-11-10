@@ -17,6 +17,9 @@ use hyper_util::rt::TokioExecutor;
 
 use crate::ClientAdapter;
 use crate::guard::{GuardConnector, GuardResolver, PrivateAddress};
+#[cfg(feature = "https")]
+use crate::proxy::Routed;
+use crate::proxy::{self, ProxyError};
 
 /// Connect before this, unless the builder says otherwise.
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -29,7 +32,7 @@ pub const DEFAULT_READ_TIMEOUT: Duration = Duration::from_secs(30);
 /// pass-throughs, so there is one path, not a guarded one and an unguarded one.
 type Guarded = GuardConnector<HttpConnector<GuardResolver<GaiResolver>>>;
 #[cfg(feature = "https")]
-type Connector = hyper_rustls::HttpsConnector<Guarded>;
+type Connector = hyper_rustls::HttpsConnector<Routed<Guarded>>;
 #[cfg(not(feature = "https"))]
 type Connector = Guarded;
 
@@ -58,6 +61,10 @@ pub(crate) struct Settings {
     pub(crate) refuse_private: bool,
     /// PEM text of extra trusted roots, checked when the adapter is built.
     pub(crate) extra_roots_pem: Vec<Vec<u8>>,
+    /// An explicit proxy for https (CONNECT), read when the adapter is built.
+    pub(crate) proxy: Option<String>,
+    /// The caller chose to have the guard judge the proxy when both are set.
+    pub(crate) guard_judges_proxy: bool,
 }
 
 impl Default for Settings {
@@ -68,6 +75,8 @@ impl Default for Settings {
             read_timeout: DEFAULT_READ_TIMEOUT,
             refuse_private: false,
             extra_roots_pem: Vec::new(),
+            proxy: None,
+            guard_judges_proxy: false,
         }
     }
 }
@@ -98,6 +107,17 @@ impl HyperClientAdapter {
         #[cfg(feature = "https")]
         http.enforce_http(false);
         let guarded = GuardConnector::new(http, settings.refuse_private);
+        let proxy = match &settings.proxy {
+            None => None,
+            Some(url) => {
+                if settings.refuse_private && !settings.guard_judges_proxy {
+                    return Err(Error::Proxy(
+                        "refuse_private_addresses with a proxy would judge the proxy's address, not the target's (the proxy looks the target up); call guard_judges_proxy(true) to say that is what you mean, or drop one of the two".to_owned(),
+                    ));
+                }
+                Some(proxy::parse(url).map_err(|e| Error::Proxy(e.message))?)
+            }
+        };
         #[cfg(feature = "https")]
         let connector = hyper_rustls::HttpsConnectorBuilder::new()
             .with_tls_config(tls::client_config(
@@ -106,7 +126,7 @@ impl HyperClientAdapter {
             )?)
             .https_or_http()
             .enable_http1()
-            .wrap_connector(guarded);
+            .wrap_connector(Routed::new(guarded, proxy));
         #[cfg(not(feature = "https"))]
         let connector = {
             if !settings.extra_roots_pem.is_empty() {
@@ -117,6 +137,11 @@ impl HyperClientAdapter {
             if settings.root_store != RootStore::Bundled {
                 return Err(Error::Tls(
                     "root_store needs https: enable the `https` feature".to_owned(),
+                ));
+            }
+            if proxy.is_some() {
+                return Err(Error::Proxy(
+                    "a proxy needs https: enable the `https` feature".to_owned(),
                 ));
             }
             guarded
@@ -136,11 +161,16 @@ impl HyperClientAdapter {
     /// Looks down the whole chain of `e`: a timed-out connect, or a TLS error (which `io::Error` hides one level further down than `source`).
     pub(crate) fn classify(&self, e: &(dyn StdError + 'static)) -> Error {
         let mut cur: Option<&(dyn StdError + 'static)> = Some(e);
+        // The first proxy failure seen; anything more specific below it (a private address, TLS) still wins.
+        let mut proxy_failure: Option<String> = None;
         while let Some(err) = cur {
             let mut node = err;
             loop {
                 if let Some(PrivateAddress(address)) = node.downcast_ref::<PrivateAddress>() {
                     return Error::PrivateAddress { address: *address };
+                }
+                if let Some(p) = node.downcast_ref::<ProxyError>() {
+                    proxy_failure.get_or_insert_with(|| p.message.clone());
                 }
                 if let Some(tls) = tls::describe(node) {
                     return Error::TlsHandshake(tls);
@@ -157,6 +187,9 @@ impl HyperClientAdapter {
                 }
             }
             cur = err.source();
+        }
+        if let Some(message) = proxy_failure {
+            return Error::Proxy(message);
         }
         Error::Request(Box::new(Chain(chain(e))))
     }
