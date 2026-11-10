@@ -16,7 +16,7 @@ use httpant_core::http::header::{AUTHORIZATION, COOKIE, PROXY_AUTHORIZATION};
 use httpant_core::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri};
 use httpant_core::{Body, Bytes, DEFAULT_BODY_LIMIT, Error, Request, Response, Result};
 pub use hyper_adapter::{
-    DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT, DEFAULT_TIMEOUT, HyperClientAdapter,
+    DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT, DEFAULT_TIMEOUT, HyperClientAdapter, RootStore,
 };
 use std::sync::Arc;
 use std::time::Duration;
@@ -116,7 +116,8 @@ impl Client {
 }
 
 /// Describes a [`Client`]'s limits and trusted roots. Nothing here can turn certificate checking off: https is verified against the bundled
-/// Mozilla roots plus the roots you add, and a connection that fails the check is an error.
+/// Mozilla roots (or the operating system's store, if you choose [`RootStore::Os`] or [`RootStore::Both`]) plus the roots you add, and a
+/// connection that fails the check is an error.
 #[derive(Clone, Debug)]
 pub struct ClientBuilder {
     timeout: Duration,
@@ -160,6 +161,14 @@ impl ClientBuilder {
     /// the same connector, so the guard applies to it too. Through a proxy (not supported yet) the address reached would be the proxy's.
     pub fn refuse_private_addresses(mut self, refuse: bool) -> Self {
         self.settings.refuse_private = refuse;
+        self
+    }
+
+    /// Which roots https trusts (default [`RootStore::Bundled`]). [`RootStore::Os`] and [`RootStore::Both`] read the operating system's store when
+    /// the client is built, and an empty or unreadable store is an error from [`ClientBuilder::build`]. Needs the `https` feature for anything but
+    /// the default.
+    pub fn root_store(mut self, store: RootStore) -> Self {
+        self.settings.root_store = store;
         self
     }
 
@@ -582,6 +591,35 @@ mod tests {
             matches!(err, Error::Tls(_)),
             "a PEM that holds no certificate must be refused: {err}"
         );
+    }
+
+    #[cfg(feature = "https")]
+    #[test]
+    fn the_os_store_builds_and_is_never_a_silent_empty_trust() {
+        // On a machine with any system roots (CI runners and developer machines have them) all three choices build; where the store is
+        // empty, `Os` and `Both` must say so rather than build a client that trusts nothing.
+        Client::builder()
+            .root_store(RootStore::Bundled)
+            .build()
+            .expect("bundled roots always build");
+        for store in [RootStore::Os, RootStore::Both] {
+            match Client::builder().root_store(store).build() {
+                Ok(_) => {}
+                Err(Error::Tls(m)) => assert!(m.contains("certificate store"), "{m}"),
+                Err(other) => panic!("an empty store must be a Tls error: {other}"),
+            }
+        }
+    }
+
+    #[cfg(not(feature = "https"))]
+    #[test]
+    fn a_root_store_choice_without_https_is_an_error_not_ignored() {
+        let err = Client::builder()
+            .root_store(RootStore::Os)
+            .build()
+            .err()
+            .expect("needs the https feature");
+        assert!(matches!(err, Error::Tls(_)), "{err}");
     }
 
     #[tokio::test]

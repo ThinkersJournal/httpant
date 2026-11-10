@@ -13,7 +13,7 @@ description = "HTTPAnt client half: the Client builder, the ClientAdapter trait 
 
 [features]
 # https:// URLs: rustls (ring) with the bundled Mozilla roots. Off by default; without it an https URL is an error that names this feature.
-https = ["dep:hyper-rustls", "dep:rustls", "dep:webpki-roots"]
+https = ["dep:hyper-rustls", "dep:rustls", "dep:webpki-roots", "dep:rustls-native-certs"]
 
 [dependencies]
 httpant-core.workspace = true
@@ -23,6 +23,7 @@ http-body.workspace = true
 hyper-rustls = { workspace = true, optional = true }
 rustls = { workspace = true, optional = true }
 webpki-roots = { workspace = true, optional = true }
+rustls-native-certs = { workspace = true, optional = true }
 hyper = { workspace = true, features = ["client", "http1"] }
 hyper-util = { workspace = true, features = ["client-legacy", "http1", "tokio"] }
 tokio = { workspace = true, features = ["time"] }

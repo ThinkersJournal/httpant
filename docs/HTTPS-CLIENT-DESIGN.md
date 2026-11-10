@@ -98,7 +98,7 @@ the target. The proxy slice must say so in its documentation and refuse "guard o
 | 1 | https verified by default | hyper-rustls, bundled roots, TLS 1.2/1.3, host name checked | 1 |
 | 2 | verification off, loud | not built; separate named type if ever wanted | later |
 | 3 | extra trusted root | `add_root_pem` | 1 |
-| 4 | OS store | `RootStore::Os` / `Both`, opt-in | 3 |
+| 4 | OS store | `RootStore::Os` / `Both`, opt-in | 3 (done in 0.7.3) |
 | 5 | methods, headers, body, `bearer` redacted | add `Client::builder()`, `patch`, `bearer(token)`: the header value is built with `HeaderValue::set_sensitive(true)`, so `Debug` prints it as sensitive; no `Debug` for the builder prints values | 1 |
 | 6 | status, headers, bounded body, 429 unchanged | already true; add a test that `Retry-After` and a `429` arrive unchanged | 1 |
 | 7 | finite timeouts: connect, whole request, idle | builder defaults (proposal: connect 10 s, request 30 s, idle read 30 s), each settable; the error names which fired (a new `Error::Timeout` kind, not three strings) | 1 |
