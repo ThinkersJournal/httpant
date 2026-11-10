@@ -9,6 +9,7 @@
 mod adapter;
 mod guard;
 mod hyper_adapter;
+mod proxy;
 
 pub use adapter::ClientAdapter;
 pub use httpant_core as core;
@@ -169,6 +170,25 @@ impl ClientBuilder {
     /// the default.
     pub fn root_store(mut self, store: RootStore) -> Self {
         self.settings.root_store = store;
+        self
+    }
+
+    /// Send `https://` requests through this HTTP proxy by CONNECT: `http://[user[:password]@]host[:port]`. The proxy sees the host and port, not the
+    /// request, because TLS runs inside the tunnel. A user name and password become `Proxy-Authorization: Basic` on the CONNECT request and are never
+    /// printed. Needs the `https` feature. A plain `http://` URL is an error while a proxy is set (it is never sent around the proxy), and a proxy
+    /// reached over `https://` is not supported yet. An address that cannot be honoured, or a combination with
+    /// [`refuse_private_addresses`](Self::refuse_private_addresses) not resolved by [`guard_judges_proxy`](Self::guard_judges_proxy), is
+    /// [`Error::Proxy`] from [`ClientBuilder::build`]. No environment variable is read.
+    pub fn proxy(mut self, url: impl AsRef<str>) -> Self {
+        self.settings.proxy = Some(url.as_ref().to_owned());
+        self
+    }
+
+    /// With a [`proxy`](Self::proxy) and [`refuse_private_addresses`](Self::refuse_private_addresses) both set, say which address the guard judges:
+    /// the proxy's. The proxy looks the target up itself, so the guard cannot see the target's address, and a client that sets both without this
+    /// is refused by `build` instead of being quietly less protected than it looks. Use a proxy you trust to enforce its own egress rules.
+    pub fn guard_judges_proxy(mut self, yes: bool) -> Self {
+        self.settings.guard_judges_proxy = yes;
         self
     }
 

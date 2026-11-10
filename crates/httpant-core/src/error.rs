@@ -106,6 +106,11 @@ pub enum Error {
     /// TLS is configured wrongly (bad certificate or key, or the `tls` feature is off).
     #[error("TLS configuration: {0}")]
     Tls(String),
+    /// A client could not use its proxy (a refused or failed CONNECT, wrong credentials, or a proxy setting that cannot be honoured).
+    #[error(
+        "proxy: {0}; check the proxy address and its credentials, and that it allows CONNECT to this host and port"
+    )]
+    Proxy(String),
     /// A client request did not get a response head before its timeout.
     #[error("request timed out after {0:?}: raise the timeout or check the peer")]
     Timeout(std::time::Duration),
@@ -141,9 +146,10 @@ impl Error {
             Error::Timeout(_) | Error::ConnectTimeout(_) | Error::ReadTimeout(_) => {
                 StatusCode::GATEWAY_TIMEOUT
             }
-            Error::Request(_) | Error::TlsHandshake(_) | Error::PrivateAddress { .. } => {
-                StatusCode::BAD_GATEWAY
-            }
+            Error::Request(_)
+            | Error::TlsHandshake(_)
+            | Error::PrivateAddress { .. }
+            | Error::Proxy(_) => StatusCode::BAD_GATEWAY,
         }
     }
 }

@@ -25,7 +25,7 @@ rustls = { workspace = true, optional = true }
 webpki-roots = { workspace = true, optional = true }
 rustls-native-certs = { workspace = true, optional = true }
 hyper = { workspace = true, features = ["client", "http1"] }
-hyper-util = { workspace = true, features = ["client-legacy", "http1", "tokio"] }
+hyper-util = { workspace = true, features = ["client-legacy", "client-proxy", "http1", "tokio"] }
 tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
