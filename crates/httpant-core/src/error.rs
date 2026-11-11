@@ -111,6 +111,9 @@ pub enum Error {
         "proxy: {0}; check the proxy address and its credentials, and that it allows CONNECT to this host and port"
     )]
     Proxy(String),
+    /// A client was told to follow redirects and one could not be followed (too many, a downgrade from https to http, an unusable `Location`).
+    #[error("redirect: {0}; fetch the new address yourself, or adjust follow_redirects")]
+    Redirect(String),
     /// A client request did not get a response head before its timeout.
     #[error("request timed out after {0:?}: raise the timeout or check the peer")]
     Timeout(std::time::Duration),
@@ -149,7 +152,8 @@ impl Error {
             Error::Request(_)
             | Error::TlsHandshake(_)
             | Error::PrivateAddress { .. }
-            | Error::Proxy(_) => StatusCode::BAD_GATEWAY,
+            | Error::Proxy(_)
+            | Error::Redirect(_) => StatusCode::BAD_GATEWAY,
         }
     }
 }

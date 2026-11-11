@@ -13,7 +13,10 @@ mod proxy;
 
 pub use adapter::ClientAdapter;
 pub use httpant_core as core;
-use httpant_core::http::header::{AUTHORIZATION, COOKIE, PROXY_AUTHORIZATION};
+use httpant_core::http::header::{
+    AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, COOKIE, HOST, LOCATION,
+    PROXY_AUTHORIZATION, TRANSFER_ENCODING,
+};
 use httpant_core::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri};
 use httpant_core::{Body, Bytes, DEFAULT_BODY_LIMIT, Error, Request, Response, Result};
 pub use hyper_adapter::{
@@ -30,6 +33,7 @@ pub const ADAPTER_IDS: &[&str] = &["hyper"];
 pub struct Client {
     adapter: Arc<dyn ClientAdapter>,
     timeout: Duration,
+    max_redirects: u32,
 }
 
 impl Default for Client {
@@ -60,6 +64,7 @@ impl Client {
         Self {
             adapter: Arc::new(adapter),
             timeout: DEFAULT_TIMEOUT,
+            max_redirects: 0,
         }
     }
 
@@ -80,8 +85,9 @@ impl Client {
             method,
             url: url.as_ref().to_owned(),
             headers: Ok(HeaderMap::new()),
-            body: Body::empty(),
+            body: Payload::Empty,
             timeout: Some(self.timeout),
+            max_redirects: self.max_redirects,
         }
     }
 
@@ -122,6 +128,7 @@ impl Client {
 #[derive(Clone, Debug)]
 pub struct ClientBuilder {
     timeout: Duration,
+    max_redirects: u32,
     settings: hyper_adapter::Settings,
 }
 
@@ -129,6 +136,7 @@ impl Default for ClientBuilder {
     fn default() -> Self {
         Self {
             timeout: DEFAULT_TIMEOUT,
+            max_redirects: 0,
             settings: hyper_adapter::Settings::default(),
         }
     }
@@ -144,6 +152,17 @@ impl ClientBuilder {
     /// Give up if a response head has not arrived this long after the request was sent (default 30 s). A single request can set its own.
     pub fn timeout(mut self, limit: Duration) -> Self {
         self.timeout = limit;
+        self
+    }
+
+    /// Follow up to `max` redirects (`301`, `302`, `303`, `307`, `308` with a `Location`); the default is `0`, which follows none and hands you the
+    /// redirect response. Following is done here, above the adapter, so every adapter behaves alike. The rules: **never from `https` to `http`**
+    /// (an [`Error::Redirect`]); `Authorization`, `Proxy-Authorization`, `Cookie` and `Host` are dropped when the scheme, host or port changes; `303`
+    /// (and `301`/`302` after a `POST`) becomes a `GET` with no body; `307`/`308` keep the method and body, but a streamed body cannot be sent twice,
+    /// so that redirect is not followed and you get it back; more than `max` redirects is an [`Error::Redirect`]. The private-address guard applies to
+    /// every hop, and the head timeout to each. A single request can set its own with [`RequestBuilder::follow_redirects`].
+    pub fn follow_redirects(mut self, max: u32) -> Self {
+        self.max_redirects = max;
         self
     }
 
@@ -204,6 +223,7 @@ impl ClientBuilder {
         let adapter = HyperClientAdapter::from_settings(&self.settings)?;
         let mut client = Client::with_adapter_impl(adapter);
         client.timeout = self.timeout;
+        client.max_redirects = self.max_redirects;
         Ok(client)
     }
 }
@@ -233,8 +253,33 @@ pub struct RequestBuilder {
     method: Method,
     url: String,
     headers: Result<HeaderMap>,
-    body: Body,
+    body: Payload,
     timeout: Option<Duration>,
+    max_redirects: u32,
+}
+
+/// The request body, kept so that a redirect can send it again when it can be.
+enum Payload {
+    Empty,
+    /// Bytes can be sent as often as needed.
+    Bytes(Bytes),
+    /// A stream is sent once; `None` after it has been.
+    Stream(Option<Body>),
+}
+
+impl Payload {
+    /// The body for one attempt; `None` if a stream has already been used.
+    fn take_for_send(&mut self) -> Option<Body> {
+        match self {
+            Payload::Empty => Some(Body::empty()),
+            Payload::Bytes(b) => Some(Body::from_bytes(b.clone())),
+            Payload::Stream(s) => s.take(),
+        }
+    }
+
+    fn replayable(&self) -> bool {
+        !matches!(self, Payload::Stream(_))
+    }
 }
 
 impl RequestBuilder {
@@ -279,13 +324,20 @@ impl RequestBuilder {
 
     /// A body of exactly these bytes (sent with a `Content-Length`).
     pub fn body(mut self, body: impl Into<Bytes>) -> Self {
-        self.body = Body::from_bytes(body);
+        self.body = Payload::Bytes(body.into());
         self
     }
 
     /// A streaming body, sent as it is produced.
     pub fn body_stream(mut self, body: Body) -> Self {
-        self.body = body;
+        self.body = Payload::Stream(Some(body));
+        self
+    }
+
+    /// Follow up to `max` redirects for this request, whatever the client was built with (`0` follows none). The rules are on
+    /// [`ClientBuilder::follow_redirects`].
+    pub fn follow_redirects(mut self, max: u32) -> Self {
+        self.max_redirects = max;
         self
     }
 
@@ -296,29 +348,198 @@ impl RequestBuilder {
     }
 
     /// Send the request.
-    pub async fn send(self) -> Result<ClientResponse> {
-        let uri: Uri = self.url.parse().map_err(|_| Error::InvalidUrl {
-            url: redact_url(&self.url),
-            reason: "not a URL",
-        })?;
-        if uri.scheme().is_none() || uri.authority().is_none() {
-            return Err(Error::InvalidUrl {
-                url: redact_url(&self.url),
-                reason: "scheme and host are required",
-            });
+    pub async fn send(mut self) -> Result<ClientResponse> {
+        let mut uri = parse_url(&self.url)?;
+        let mut headers = self.headers?;
+        let mut hops = 0u32;
+        loop {
+            let Some(body) = self.body.take_for_send() else {
+                // Only reachable after a followed redirect, which is never taken for a stream.
+                return Err(Error::Redirect(
+                    "a streamed request body cannot be sent again".to_owned(),
+                ));
+            };
+            let mut req = Request::new(body);
+            *req.method_mut() = self.method.clone();
+            *req.uri_mut() = uri.clone();
+            *req.headers_mut() = headers.clone();
+            let sending = self.adapter.send(req);
+            let res = match self.timeout {
+                Some(limit) => tokio::time::timeout(limit, sending)
+                    .await
+                    .map_err(|_| Error::Timeout(limit))??,
+                None => sending.await?,
+            };
+            if self.max_redirects == 0 || !is_redirect(res.status()) {
+                return Ok(ClientResponse { inner: res });
+            }
+            let Some(location) = res
+                .headers()
+                .get(LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned)
+            else {
+                // A redirect status with no usable Location says nowhere to go: the caller gets the response.
+                return Ok(ClientResponse { inner: res });
+            };
+            let status = res.status();
+            let to_get = status == StatusCode::SEE_OTHER
+                || (matches!(status, StatusCode::MOVED_PERMANENTLY | StatusCode::FOUND)
+                    && self.method == Method::POST);
+            if !to_get && !self.body.replayable() {
+                // 307/308 must resend the body, and a stream is gone: hand the redirect back rather than send something else.
+                return Ok(ClientResponse { inner: res });
+            }
+            if hops >= self.max_redirects {
+                return Err(Error::Redirect(format!(
+                    "more than {} redirects",
+                    self.max_redirects
+                )));
+            }
+            let next = resolve_location(&uri, &location)
+                .map_err(|reason| Error::Redirect(format!("the Location header {reason}")))?;
+            if uri.scheme_str() == Some("https") && next.scheme_str() == Some("http") {
+                return Err(Error::Redirect(
+                    "refused to follow a redirect from https to http".to_owned(),
+                ));
+            }
+            if origin(&uri) != origin(&next) {
+                for name in [AUTHORIZATION, PROXY_AUTHORIZATION, COOKIE, HOST] {
+                    headers.remove(name);
+                }
+            }
+            if to_get {
+                if self.method != Method::HEAD {
+                    self.method = Method::GET;
+                }
+                self.body = Payload::Empty;
+                for name in [
+                    CONTENT_TYPE,
+                    CONTENT_LENGTH,
+                    CONTENT_ENCODING,
+                    TRANSFER_ENCODING,
+                ] {
+                    headers.remove(name);
+                }
+            }
+            uri = next;
+            hops += 1;
         }
-        let mut req = Request::new(self.body);
-        *req.method_mut() = self.method;
-        *req.uri_mut() = uri;
-        *req.headers_mut() = self.headers?;
-        let sending = self.adapter.send(req);
-        let res = match self.timeout {
-            Some(limit) => tokio::time::timeout(limit, sending)
-                .await
-                .map_err(|_| Error::Timeout(limit))??,
-            None => sending.await?,
-        };
-        Ok(ClientResponse { inner: res })
+    }
+}
+
+fn parse_url(url: &str) -> Result<Uri> {
+    let uri: Uri = url.parse().map_err(|_| Error::InvalidUrl {
+        url: redact_url(url),
+        reason: "not a URL",
+    })?;
+    if uri.scheme().is_none() || uri.authority().is_none() {
+        return Err(Error::InvalidUrl {
+            url: redact_url(url),
+            reason: "scheme and host are required",
+        });
+    }
+    Ok(uri)
+}
+
+fn is_redirect(status: StatusCode) -> bool {
+    matches!(
+        status,
+        StatusCode::MOVED_PERMANENTLY
+            | StatusCode::FOUND
+            | StatusCode::SEE_OTHER
+            | StatusCode::TEMPORARY_REDIRECT
+            | StatusCode::PERMANENT_REDIRECT
+    )
+}
+
+/// Scheme, host and effective port: what "the same place" means for sending credentials again.
+fn origin(uri: &Uri) -> (String, String, u16) {
+    let scheme = uri.scheme_str().unwrap_or_default().to_ascii_lowercase();
+    let port = uri
+        .port_u16()
+        .unwrap_or(if scheme == "https" { 443 } else { 80 });
+    (
+        scheme,
+        uri.host().unwrap_or_default().to_ascii_lowercase(),
+        port,
+    )
+}
+
+/// Resolve a `Location` value against the URL that returned it (RFC 3986 section 5, without the fragment, which a client does not send).
+/// The reason it cannot be used is returned as text that holds none of the URL.
+fn resolve_location(base: &Uri, location: &str) -> std::result::Result<Uri, &'static str> {
+    let location = location.split('#').next().unwrap_or_default().trim();
+    if location.is_empty() {
+        return Err("is empty");
+    }
+    let scheme = base.scheme_str().ok_or("has no base scheme")?;
+    let authority = base.authority().ok_or("has no base host")?;
+    let text = if let Some((s, _)) = location.split_once("://") {
+        if s.is_empty()
+            || !s
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.')
+        {
+            return Err("is not a usable URL");
+        }
+        location.to_owned()
+    } else if let Some(rest) = location.strip_prefix("//") {
+        format!("{scheme}://{rest}")
+    } else if location.starts_with('/') {
+        format!("{scheme}://{authority}{}", remove_dot_segments(location))
+    } else if let Some(query) = location.strip_prefix('?') {
+        format!("{scheme}://{authority}{}?{query}", base.path())
+    } else {
+        let path = base.path();
+        let dir = &path[..=path.rfind('/').unwrap_or(0)];
+        let dir = if dir.is_empty() { "/" } else { dir };
+        format!(
+            "{scheme}://{authority}{}",
+            remove_dot_segments(&format!("{dir}{location}"))
+        )
+    };
+    let uri: Uri = text.parse().map_err(|_| "is not a usable URL")?;
+    match uri.scheme_str() {
+        Some("http" | "https") if uri.authority().is_some() => Ok(uri),
+        _ => Err("names a scheme this client does not use"),
+    }
+}
+
+/// `.` and `..` segments removed from a path that may carry a query.
+fn remove_dot_segments(path_and_query: &str) -> String {
+    let (path, query) = match path_and_query.split_once('?') {
+        Some((p, q)) => (p, Some(q)),
+        None => (path_and_query, None),
+    };
+    let mut out: Vec<&str> = Vec::new();
+    let segments: Vec<&str> = path.split('/').collect();
+    for (i, seg) in segments.iter().enumerate() {
+        let last = i + 1 == segments.len();
+        match *seg {
+            "." => {
+                if last {
+                    out.push("");
+                }
+            }
+            ".." => {
+                if out.len() > 1 {
+                    out.pop();
+                }
+                if last {
+                    out.push("");
+                }
+            }
+            s => out.push(s),
+        }
+    }
+    let mut joined = out.join("/");
+    if !joined.starts_with('/') {
+        joined.insert(0, '/');
+    }
+    match query {
+        Some(q) => format!("{joined}?{q}"),
+        None => joined,
     }
 }
 
@@ -640,6 +861,56 @@ mod tests {
             .err()
             .expect("needs the https feature");
         assert!(matches!(err, Error::Tls(_)), "{err}");
+    }
+
+    #[test]
+    fn a_location_is_resolved_against_the_url_that_sent_it() {
+        let base: Uri = "https://a.example:8443/x/y/z?q=1".parse().unwrap();
+        for (location, expected) in [
+            ("https://b.example/p", "https://b.example/p"),
+            ("//b.example/p", "https://b.example/p"),
+            ("/abs", "https://a.example:8443/abs"),
+            ("/a/./b/../c", "https://a.example:8443/a/c"),
+            ("rel", "https://a.example:8443/x/y/rel"),
+            ("../up", "https://a.example:8443/x/up"),
+            ("../../../../way/up", "https://a.example:8443/way/up"),
+            ("?n=2", "https://a.example:8443/x/y/z?n=2"),
+            ("/p?a=b#frag", "https://a.example:8443/p?a=b"),
+        ] {
+            let got = resolve_location(&base, location).unwrap();
+            assert_eq!(got.to_string(), expected, "{location}");
+        }
+        for bad in [
+            "",
+            "   ",
+            "#only",
+            "ftp://b.example/",
+            "://x",
+            "javascript://x",
+        ] {
+            assert!(resolve_location(&base, bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_same_place_means_same_scheme_host_and_port() {
+        let u = |s: &str| -> Uri { s.parse().unwrap() };
+        assert_eq!(
+            origin(&u("https://A.example/")),
+            origin(&u("https://a.example:443/x"))
+        );
+        assert_ne!(
+            origin(&u("https://a.example/")),
+            origin(&u("http://a.example/"))
+        );
+        assert_ne!(
+            origin(&u("https://a.example/")),
+            origin(&u("https://a.example:8443/"))
+        );
+        assert_ne!(
+            origin(&u("https://a.example/")),
+            origin(&u("https://b.example/"))
+        );
     }
 
     #[tokio::test]
