@@ -109,4 +109,4 @@ jobs:
   portfolio:
     permissions:
       contents: read
-    uses: ciresnave/coderipper/.github/workflows/portfolio.yml@a8e30cd2bbe74399a4ae5f70c43567c870a655a6 # coderipper main on 2026-10-26 (its portfolio.yml installs CodeRipper 0.10.x)
+    uses: ciresnave/coderipper/.github/workflows/portfolio.yml@4bcf55e4cd5c171a88f021c0c4e563e47ef4bb7d # coderipper main, pin per PM TASK 2026-11-11
