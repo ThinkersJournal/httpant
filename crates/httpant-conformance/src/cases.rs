@@ -378,3 +378,36 @@ pub fn limits(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
         Ok(())
     })
 }
+
+/// Case 20: an answer sent without the request body having been read reaches the client. The client writes the whole body first and only then
+/// reads (the way a simple client does), so a server that answers and closes with the body unread, and so resets the connection on a stack
+/// that does, shows the client no status at all. Two ways to answer early: the handler refuses (a `403` from `/refuse`, which never reads the
+/// body; 1.5 MiB is under the body limit, so the limit is not what answers) and the server's own limit refuses (a declared 5 MiB, `413`).
+pub fn refusal_delivered(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
+    Box::pin(async move {
+        let server = serve!(s);
+        let addr = server.addr();
+        for (size, want, what) in [
+            (1536 * 1024usize, 403u16, "refused by the handler"),
+            (5 * 1024 * 1024, 413, "refused by the body limit"),
+        ] {
+            let mut conn = crate::raw::Conn::open(addr)
+                .await
+                .map_err(|e| format!("could not connect: {e}"))?
+                .with_timeout(std::time::Duration::from_secs(15));
+            let request = RawRequest::new("GET", "/refuse").body(vec![b'x'; size]);
+            // The write may fail if the server cut the connection; what the client then reads is what the case is about.
+            let _ = conn.write(&request.to_bytes()).await;
+            let res = conn.response("GET").await.map_err(|e| {
+                format!("a GET with a {size}-byte body, {what}: no answer reached the client: {e}")
+            })?;
+            ensure!(
+                res.status == want,
+                "a GET with a {size}-byte body, {what}: expected {want}, got {}",
+                res.status
+            );
+        }
+        let _ = server.shutdown().await;
+        Ok(())
+    })
+}

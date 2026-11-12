@@ -10,6 +10,7 @@ mod adapter;
 #[cfg(feature = "axum")]
 mod axum_adapter;
 mod challenge;
+mod drain;
 mod edge;
 mod grace;
 mod hyper_adapter;
