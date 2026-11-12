@@ -580,3 +580,87 @@ pub fn connection_limit(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
         Ok(())
     })
 }
+
+/// Case 23: the request head read timeout. Started with 700 ms. A client that sends half a request head and then says nothing is cut off
+/// (the connection closed, or a `408`) within about the timeout; a client that sends its head in two pieces 250 ms apart, finishing inside the
+/// timeout, is served. An adapter that declares `header_read_timeout: No` is held to the opposite for the stalled head (still open after
+/// two and a half seconds), so a declaration that falls behind its library fails here.
+pub fn header_read_timeout(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
+    Box::pin(async move {
+        use httpant_core::Support;
+        let enforced = match s.declared() {
+            Some(c) => match c.header_read_timeout {
+                Support::Yes => true,
+                Support::No => false,
+                Support::Unknown => {
+                    return Err("the header_read_timeout capability is not established: declare `Yes` or `No`".into());
+                }
+            },
+            None => true,
+        };
+        let timeout = std::time::Duration::from_millis(700);
+        let setup = crate::Setup {
+            limits: httpant_server::Limits::default().header_read_timeout(timeout),
+            ..crate::Setup::default()
+        };
+        let server = s
+            .start_with(app::app(), setup)
+            .await
+            .map_err(|e| format!("could not start: {e}"))?;
+        let addr = server.addr();
+
+        // A head that stops half way.
+        let wait = if enforced {
+            std::time::Duration::from_secs(4)
+        } else {
+            std::time::Duration::from_millis(2500)
+        };
+        let mut conn = crate::raw::Conn::open(addr)
+            .await
+            .map_err(|e| format!("could not connect: {e}"))?
+            .with_timeout(wait);
+        conn.write(b"GET /m HTTP/1.1\r\nHost: conformance\r\nX-Half: ")
+            .await
+            .map_err(|e| format!("send half a head: {e}"))?;
+        let outcome = conn.response("GET").await;
+        let cut = match &outcome {
+            Ok(res) => res.status == 408,
+            Err(e) => e.kind() != std::io::ErrorKind::TimedOut,
+        };
+        if enforced {
+            ensure!(
+                cut,
+                "a request head that stopped half way was still waited for after {wait:?} (timeout {timeout:?}): {outcome:?}"
+            );
+        } else {
+            ensure!(
+                !cut,
+                "declares `header_read_timeout: No` but a head that stopped half way was cut off within {wait:?}: the declaration may be out of date"
+            );
+        }
+
+        // A head that arrives in two pieces inside the timeout is served.
+        let mut conn = crate::raw::Conn::open(addr)
+            .await
+            .map_err(|e| format!("could not connect: {e}"))?
+            .with_timeout(std::time::Duration::from_secs(5));
+        conn.write(b"GET /m HTTP/1.1\r\nHost: conformance\r\n")
+            .await
+            .map_err(|e| format!("send the first part of the head: {e}"))?;
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        conn.write(b"Connection: close\r\n\r\n")
+            .await
+            .map_err(|e| format!("send the rest of the head: {e}"))?;
+        let res = conn
+            .response("GET")
+            .await
+            .map_err(|e| format!("a head finished inside the timeout was not answered: {e}"))?;
+        ensure!(
+            res.status == 200,
+            "a head finished inside the timeout: status {}",
+            res.status
+        );
+        let _ = server.shutdown().await;
+        Ok(())
+    })
+}

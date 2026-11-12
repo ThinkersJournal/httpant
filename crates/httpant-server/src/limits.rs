@@ -28,6 +28,7 @@ use tower::ServiceExt;
 /// | request body, declared or streamed | `413` | 2 MiB |
 /// | request body stalled (no data for this long, while a handler waits for it) | `408` | 60 s |
 /// | open connections | accepting pauses until one closes | 10,000 |
+/// | request head (headers) not complete within this time of the connection starting to read it | the connection is closed | 30 s |
 ///
 /// A body over its limit is refused at once when its `Content-Length` says so; a body that grows past it while streaming (chunked, or a lying
 /// `Content-Length`) fails the read with [`httpant_core::Error::BodyTooLarge`], which the handler's error mapping answers with `413`.
@@ -67,7 +68,15 @@ pub struct Limits {
     /// to what the limit needs when it is lower (never past the hard limit); a limit the hard limit cannot hold fails at start with [`httpant_core::Error::ConnectionLimitTooHigh`], not under load.
     /// Not enforced on warp, whose accept loop HTTPAnt cannot reach (`Capabilities::connection_limit`).
     pub max_connections: usize,
+    /// Longest a client may take to send a request head (the request line and headers) once the connection is waiting for one; the
+    /// connection is closed when it runs out, and the same time bounds a keep-alive connection left idle where the library counts it from
+    /// there. `Duration::ZERO` switches it off ([`Limits::unlimited`] does). Enforced on hyper, actix-web and salvo; **not on axum, poem and warp**,
+    /// which give HTTPAnt no way to set one (`Capabilities::header_read_timeout`, `docs/LIMITS-BY-ADAPTER.md`).
+    pub header_read_timeout: Duration,
 }
+
+/// The default for [`Limits::header_read_timeout`].
+pub const DEFAULT_HEADER_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The default for [`Limits::max_connections`].
 pub const DEFAULT_MAX_CONNECTIONS: usize = 10_000;
@@ -93,6 +102,7 @@ impl Default for Limits {
             drain_timeout: DEFAULT_DRAIN_TIMEOUT,
             body_read_timeout: DEFAULT_BODY_READ_TIMEOUT,
             max_connections: DEFAULT_MAX_CONNECTIONS,
+            header_read_timeout: DEFAULT_HEADER_READ_TIMEOUT,
         }
     }
 }
@@ -109,6 +119,7 @@ impl Limits {
             drain_timeout: DEFAULT_DRAIN_TIMEOUT,
             body_read_timeout: Duration::ZERO,
             max_connections: 0,
+            header_read_timeout: Duration::ZERO,
         }
     }
 
@@ -157,6 +168,12 @@ impl Limits {
     /// Most connections open at once (`0`: no limit), see [`Limits`].
     pub fn max_connections(mut self, connections: usize) -> Self {
         self.max_connections = connections;
+        self
+    }
+
+    /// Longest a client may take to send a request head (`Duration::ZERO`: no limit), see [`Limits`].
+    pub fn header_read_timeout(mut self, timeout: Duration) -> Self {
+        self.header_read_timeout = timeout;
         self
     }
 
@@ -469,5 +486,7 @@ mod tests {
         assert_eq!(Limits::unlimited().body_read_timeout, Duration::ZERO);
         assert_eq!(d.max_connections, 10_000);
         assert_eq!(Limits::unlimited().max_connections, 0);
+        assert_eq!(d.header_read_timeout, Duration::from_secs(30));
+        assert_eq!(Limits::unlimited().header_read_timeout, Duration::ZERO);
     }
 }
