@@ -9,6 +9,8 @@ use httpant_core::{
     Body, BodyLimitExceeded, BoxFuture, BoxService, Bytes, DEFAULT_BODY_LIMIT, IntoResponse,
     Request, Response,
 };
+use std::time::Duration;
+
 use tower::ServiceExt;
 
 /// What the server accepts before a handler ever runs. The defaults are conservative; raise them on purpose, or take them off with
@@ -27,6 +29,15 @@ use tower::ServiceExt;
 ///
 /// A body over its limit is refused at once when its `Content-Length` says so; a body that grows past it while streaming (chunked, or a lying
 /// `Content-Length`) fails the read with [`httpant_core::Error::BodyTooLarge`], which the handler's error mapping answers with `413`.
+///
+/// **A refusal must reach the client.** A response sent while the request body is still arriving, and the connection closed with that
+/// body unread, ends in a TCP reset on some stacks (Windows measured: a refused `GET` with a 1 MB body never shows its status to the
+/// client, only `ConnectionAborted`). So when a handler, or a limit above, answers HTTP/1.1 without having read the whole body, the server
+/// reads and discards up to [`max_drain_bytes`](Limits::max_drain_bytes) of it (default 8 MiB), for at most
+/// [`drain_timeout`](Limits::drain_timeout) (default 5 s), before it sends the answer; if the body is not finished by then, the answer says
+/// `Connection: close` and a client still sending may not see it. Not drained: HTTP/2 (a reset stream is not a reset connection), a request
+/// that sent `Expect` (the client waits for the answer before it sends the body, and reading would invite it), a body whose declared length is
+/// over the cap (it cannot be drained), and a body something still holds (a response that streams it back).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Limits {
@@ -38,7 +49,19 @@ pub struct Limits {
     pub max_header_bytes: Option<usize>,
     /// Largest request body accepted, in bytes. `None`: no limit.
     pub max_body_bytes: Option<u64>,
+    /// Most bytes of an unread request body read and discarded before an answer is sent, so a refusal is not lost to a reset. `0`: never
+    /// drain. [`Limits::unlimited`] leaves this at its default, because it protects the answer, not the server.
+    pub max_drain_bytes: u64,
+    /// Longest the draining may take.
+    pub drain_timeout: Duration,
 }
+
+/// The default for [`Limits::max_drain_bytes`]: above the default body limit, so a refused body of the size the server would have accepted
+/// is drained whole.
+pub const DEFAULT_MAX_DRAIN_BYTES: u64 = 8 * 1024 * 1024;
+
+/// The default for [`Limits::drain_timeout`].
+pub const DEFAULT_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl Default for Limits {
     fn default() -> Self {
@@ -47,6 +70,8 @@ impl Default for Limits {
             max_headers: Some(64),
             max_header_bytes: Some(16 * 1024),
             max_body_bytes: Some(DEFAULT_BODY_LIMIT as u64),
+            max_drain_bytes: DEFAULT_MAX_DRAIN_BYTES,
+            drain_timeout: DEFAULT_DRAIN_TIMEOUT,
         }
     }
 }
@@ -59,6 +84,8 @@ impl Limits {
             max_headers: None,
             max_header_bytes: None,
             max_body_bytes: None,
+            max_drain_bytes: DEFAULT_MAX_DRAIN_BYTES,
+            drain_timeout: DEFAULT_DRAIN_TIMEOUT,
         }
     }
 
@@ -83,6 +110,18 @@ impl Limits {
     /// Largest request body accepted (a streaming upload endpoint raises this on purpose).
     pub fn max_body_bytes(mut self, bytes: u64) -> Self {
         self.max_body_bytes = Some(bytes);
+        self
+    }
+
+    /// Most bytes of an unread request body to read and discard before answering (`0`: none), see [`Limits`].
+    pub fn max_drain_bytes(mut self, bytes: u64) -> Self {
+        self.max_drain_bytes = bytes;
+        self
+    }
+
+    /// Longest the draining of an unread request body may take, see [`Limits`].
+    pub fn drain_timeout(mut self, timeout: Duration) -> Self {
+        self.drain_timeout = timeout;
         self
     }
 
@@ -389,5 +428,7 @@ mod tests {
         assert_eq!(d.max_headers, Some(64));
         assert_eq!(d.max_header_bytes, Some(16384));
         assert_eq!(d.max_body_bytes, Some(2 * 1024 * 1024));
+        assert_eq!(d.max_drain_bytes, 8 * 1024 * 1024);
+        assert_eq!(d.drain_timeout, Duration::from_secs(5));
     }
 }

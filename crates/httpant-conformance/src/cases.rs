@@ -378,3 +378,46 @@ pub fn limits(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
         Ok(())
     })
 }
+
+/// Case 20: an answer sent without the request body having been read reaches the client, and the client is let finish sending. The body goes
+/// out in paced pieces and is all written before the answer is read, the way a client uploading to a server that has already decided to refuse
+/// does. A server that answers and closes with the body unread makes the stack reset the connection: on Windows the answer is then lost (the
+/// client reads `ConnectionAborted`), on Linux it stays readable but the client's next write fails; either shows here. Two ways to answer early:
+/// the handler refuses (a `403` from `/refuse`, which never reads the body; 1.5 MiB is under the body limit, so the limit is not what answers)
+/// and the server's own limit refuses (a declared 5 MiB, `413`).
+pub fn refusal_delivered(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
+    Box::pin(async move {
+        let server = serve!(s);
+        let addr = server.addr();
+        for (size, want, what) in [
+            (1536 * 1024usize, 403u16, "refused by the handler"),
+            (5 * 1024 * 1024, 413, "refused by the body limit"),
+        ] {
+            let mut conn = crate::raw::Conn::open(addr)
+                .await
+                .map_err(|e| format!("could not connect: {e}"))?
+                .with_timeout(std::time::Duration::from_secs(15));
+            let bytes = RawRequest::new("GET", "/refuse")
+                .body(vec![b'x'; size])
+                .to_bytes();
+            for piece in bytes.chunks(64 * 1024) {
+                conn.write(piece).await.map_err(|e| {
+                    format!(
+                        "a GET with a {size}-byte body, {what}: the server cut the connection before the body was sent: {e}"
+                    )
+                })?;
+                tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+            }
+            let res = conn.response("GET").await.map_err(|e| {
+                format!("a GET with a {size}-byte body, {what}: no answer reached the client: {e}")
+            })?;
+            ensure!(
+                res.status == want,
+                "a GET with a {size}-byte body, {what}: expected {want}, got {}",
+                res.status
+            );
+        }
+        let _ = server.shutdown().await;
+        Ok(())
+    })
+}

@@ -73,6 +73,9 @@ pub enum Mutant {
     H2cOnByDefault,
     /// `h2c(true)` is asked for and the listener still refuses the HTTP/2 preface.
     IgnoresH2cRequest,
+    /// The default limits, except that an unread request body is not drained before an answer is sent, so the connection is closed with
+    /// that body unread (a TCP reset on some stacks, which discards the answer).
+    NoDrain,
 }
 
 impl Mutant {
@@ -84,6 +87,7 @@ impl Mutant {
             Mutant::NoHeaderCountLimit => l.max_headers = None,
             Mutant::NoHeaderBytesLimit => l.max_header_bytes = None,
             Mutant::NoBodyLimit => l.max_body_bytes = None,
+            Mutant::NoDrain => l.max_drain_bytes = 0,
             _ => {}
         }
         l
@@ -121,6 +125,7 @@ impl Mutant {
             Mutant::IgnoresH2cRequest => "ignores-h2c-request",
             Mutant::IgnoreConnectionClose => "ignore-connection-close",
             Mutant::SkipExpectContinue => "skip-expect-continue",
+            Mutant::NoDrain => "no-drain",
         }
     }
 }
@@ -140,6 +145,7 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         | Mutant::NoHeaderCountLimit
         | Mutant::NoHeaderBytesLimit
         | Mutant::NoBodyLimit
+        | Mutant::NoDrain
         | Mutant::ServeTlsInClear
         | Mutant::OffersH2WithoutServingIt
         | Mutant::H2cOnByDefault
