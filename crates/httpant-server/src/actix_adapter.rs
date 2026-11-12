@@ -82,6 +82,12 @@ impl ServerAdapter for ActixAdapter {
                             ))
                         })
                         .workers(2)
+                        // actix-web lingers 5 s by default after it has answered a request whose body was not read to its end, reading
+                        // and discarding what the client keeps sending, with no limit on the bytes (measured: all of a 256 MiB chunked
+                        // flood at a 256 KiB drain cap, httpant#72). Zero ends the connection after the answer, as the other adapters
+                        // do; what HTTPAnt itself drains first is `Limits::max_drain_bytes`. (The TLS listener in `actix_tls.rs` builds
+                        // its `HttpService` without this timeout, so it never lingered.)
+                        .client_disconnect_timeout(std::time::Duration::ZERO)
                         .disable_signals()
                         .listen(listener)
                         .map(HttpServer::run);
