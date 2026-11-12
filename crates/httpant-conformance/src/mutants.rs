@@ -80,6 +80,8 @@ pub enum Mutant {
     NoBodyReadTimeout,
     /// The default limits, except that the number of connections is not limited.
     NoConnectionLimit,
+    /// The default limits, except that a request head that never completes is waited for for ever (or for as long as the library's own default).
+    NoHeaderReadTimeout,
 }
 
 impl Mutant {
@@ -99,6 +101,7 @@ impl Mutant {
             Mutant::NoDrain => l.max_drain_bytes = 0,
             Mutant::NoBodyReadTimeout => l.body_read_timeout = std::time::Duration::ZERO,
             Mutant::NoConnectionLimit => l.max_connections = 0,
+            Mutant::NoHeaderReadTimeout => l.header_read_timeout = std::time::Duration::ZERO,
             _ => {}
         }
         l
@@ -139,6 +142,7 @@ impl Mutant {
             Mutant::NoDrain => "no-drain",
             Mutant::NoBodyReadTimeout => "no-body-read-timeout",
             Mutant::NoConnectionLimit => "no-connection-limit",
+            Mutant::NoHeaderReadTimeout => "no-header-read-timeout",
         }
     }
 }
@@ -161,6 +165,7 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         | Mutant::NoDrain
         | Mutant::NoBodyReadTimeout
         | Mutant::NoConnectionLimit
+        | Mutant::NoHeaderReadTimeout
         | Mutant::ServeTlsInClear
         | Mutant::OffersH2WithoutServingIt
         | Mutant::H2cOnByDefault

@@ -8,13 +8,17 @@ the library underneath, and what the library does by default. ROADMAP row 17, ht
 |---|---|---|---|---|---|---|---|
 | request body read timeout (idle time with no data while the body is waited for) | `Limits::body_read_timeout` (60 s, `Duration::ZERO` = off) | enforced | enforced | enforced | enforced | enforced | enforced |
 | open connections | `Limits::max_connections` (10,000, `0` = off) | enforced | enforced | enforced (per worker, rounded up to an even total) | enforced | enforced | **inherited: none** (warp's accept loop is private; no cap seen at 3000 connections) |
-| request head (header) read timeout, and idle keep-alive | not yet a HTTPAnt limit (row 17, next slice) | inherited: **none** | inherited: **none** | inherited: 5 s (`client_request_timeout`) | inherited: **none** | inherited: 30 s | inherited: **none** |
+| request head (header) read timeout | `Limits::header_read_timeout` (30 s, `Duration::ZERO` = off) | enforced | **inherited: none** | enforced (its own `client_request_timeout`) | **inherited: none** | enforced (its fuse config) | **inherited: none** |
+| idle keep-alive connection (no request in flight) | counted by the same setting where the library counts it from there | bounded by the same setting (measured: closed at 3.0 s with a 3 s setting) | inherited: none | inherited: 5 s (actix's own `keep_alive`, not HTTPAnt's setting) | inherited: none | bounded by the same setting (measured 3.0 s at 3 s) | inherited: none |
 
-"Enforced" means HTTPAnt's own code on the one service (the body timeout) or on the accept loop it controls (connections), held by a
-conformance case on every adapter: case 21 (body read timeout) and case 22 (connection limit; an adapter that declares
-`connection_limit: No` is held to the opposite, so the declaration cannot go stale).
+"Enforced" means HTTPAnt's own code on the one service (the body timeout), on the accept loop it controls (connections), or on the
+library's own knob that HTTPAnt sets from `Limits` (the head timeout: hyper's `header_read_timeout`, actix's `client_request_timeout`, salvo's
+fuse config), held by a conformance case on every adapter: case 21 (body read timeout), case 22 (connection limit) and case 23 (head read
+timeout). An adapter that declares `connection_limit: No` or `header_read_timeout: No` is held to the opposite, so the declaration cannot go
+stale. axum, poem and warp give HTTPAnt no way to set a head timeout (axum and warp run hyper-util's builder with no hook; poem has only an
+activity-based `idle_timeout`, which would also end a long-poll or an SSE stream that is merely quiet, so it is not used for this).
 
-## How the defaults were measured
+## How the defaults were measured (`cargo run -p httpant-bench --example limits_probe`)
 
 Windows 11, loopback, 2026-11-12, HTTPAnt at the head of the row 17 branch with no HTTPAnt limit set on the header phase, a plain
 `GET /` server per adapter, a window of 40 s, all six at once:
@@ -22,6 +26,8 @@ Windows 11, loopback, 2026-11-12, HTTPAnt at the head of the row 17 branch with 
 - *stalled head*: connect, send half a request head, then say nothing: hyper, axum, poem and warp were still open at 40 s; salvo closed the
   connection at 30.0 s; actix-web at 5.0 s.
 - *idle keep-alive*: one request answered, the connection then left open: the same split (still open at 40 s; salvo 30.0 s; actix-web 5.0 s).
+- *the same probe with the new setting* (`header_read_timeout` 3 s, a 12 s window): hyper, actix-web and salvo cut the stalled head at 3.0 s; hyper and salvo
+  also closed the idle keep-alive connection at 3.0 s, actix-web at its own 5.0 s; axum, poem and warp stayed open.
 - *many connections*: 3000 idle connections held, then one more client: served by all six (no cap in HTTPAnt or in the libraries at that
   count; axum failed one of the 3000 connects, probably the accept queue, not a limit).
 
@@ -33,8 +39,8 @@ A measurement at a point in time on one machine: a library release can change it
   stalling mid-body; a client that sends one byte every 59 s is not caught by an idle time (the drain's own `drain_timeout` bounds the
   refusal case).
 - **Connection limit** pauses accepting at the limit: clients wait in the operating system's queue (its backlog) until a connection closes,
-  and nothing is refused. Idle keep-alive connections hold slots, so until the header and idle timeouts exist a client that opens the limit's
-  worth of connections and does nothing blocks the rest on every adapter that has no timeout of its own (see the last row).
+  and nothing is refused. Idle keep-alive connections hold slots, so a client that opens the limit's
+  worth of connections and does nothing blocks the rest on every adapter that has no head or idle timeout (axum, poem, warp: the last two rows).
 - **Open files (Unix):** each connection is a file descriptor. If the soft limit is lower than `max_connections` plus a reserve of 256,
   HTTPAnt raises the soft limit to what it needs, never past the hard limit; if the hard limit cannot hold it, `bind` fails at start with
   `Error::ConnectionLimitTooHigh` and the numbers, and does not wait to fail under load. Windows has no per-process limit to check.

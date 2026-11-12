@@ -54,6 +54,8 @@ impl ServerAdapter for PoemAdapter {
         c.h2c_refusable = Support::Yes;
         // `Limits::max_connections`: the accept loop takes a slot before it accepts (`connections.rs`); conformance case 22.
         c.connection_limit = Support::Yes;
+        // The library gives HTTPAnt no way to set a head read timeout, so it keeps its own default (measured in `docs/LIMITS-BY-ADAPTER.md`); case 23 holds this.
+        c.header_read_timeout = Support::No;
         c
     }
 
