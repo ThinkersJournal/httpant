@@ -126,63 +126,88 @@ async fn a_trickled_body_cannot_hold_a_refusal_longer_than_the_drain_timeout() {
     }
 }
 
-/// A flood (a chunked body, so no declared length to refuse it by) is read only up to the cap: the server stops reading and closes, so the
-/// client's writes fail after what the socket buffers hold, far short of what it offered. A server that read it all would take every byte.
+/// A flood is read only up to the cap: the server stops reading and closes, so the client's writes fail after what the socket buffers hold,
+/// far short of what it offered. A server that read it all would take every byte. Two floods: a chunked body (no declared length) that a
+/// handler refuses, and a declared 256 MiB that the body limit refuses with `413` on its head. On actix-web both used to be read whole: it
+/// lingers 5 s after answering and reads without limit, unless told not to (`actix_adapter.rs`, httpant#72).
 #[tokio::test]
 async fn a_flooded_body_is_not_read_past_the_cap() {
     const OFFERED: usize = 256 * 1024 * 1024;
     const CHUNK: usize = 64 * 1024;
     let cap = 256 * 1024u64;
     for id in ADAPTERS {
-        // actix-web reads a request body to its end after it has answered, whatever HTTPAnt did: measured with the drain on and with it off
-        // (`max_drain_bytes(0)`), it took all 256 MiB of this flood both times. That is the library's own behaviour, below the service, so
-        // the cap cannot hold on it; the unit tests in `drain.rs` hold the cap for what HTTPAnt itself reads, and the timeout test below
-        // holds on actix too. Left out here, not hidden: see the changelog fragment.
-        if *id == "actix-web" {
-            continue;
-        }
-        let srv = serve(id, Limits::default().max_drain_bytes(cap)).await;
-        let tcp = TcpStream::connect(srv.addr()).await.unwrap();
-        let (mut read, mut write) = tcp.into_split();
-        let start = Instant::now();
-        write
-            .write_all(b"GET /refuse HTTP/1.1\r\nHost: t\r\nTransfer-Encoding: chunked\r\n\r\n")
-            .await
-            .unwrap();
-        let flood = tokio::spawn(async move {
-            let mut chunk = format!("{CHUNK:x}\r\n").into_bytes();
-            chunk.extend(std::iter::repeat_n(b'x', CHUNK));
-            chunk.extend_from_slice(b"\r\n");
-            let mut offered = 0usize;
-            while offered < OFFERED {
-                if write.write_all(&chunk).await.is_err() {
-                    break;
+        for chunked in [true, false] {
+            let srv = serve(id, Limits::default().max_drain_bytes(cap)).await;
+            let tcp = TcpStream::connect(srv.addr()).await.unwrap();
+            let (mut read, mut write) = tcp.into_split();
+            let start = Instant::now();
+            let head = if chunked {
+                "GET /refuse HTTP/1.1
+Host: t
+Transfer-Encoding: chunked
+
+"
+                .to_owned()
+            } else {
+                format!(
+                    "GET /refuse HTTP/1.1
+Host: t
+Content-Length: {OFFERED}
+
+"
+                )
+            };
+            write.write_all(head.as_bytes()).await.unwrap();
+            let flood = tokio::spawn(async move {
+                let mut piece = Vec::new();
+                if chunked {
+                    piece.extend_from_slice(
+                        format!(
+                            "{CHUNK:x}
+"
+                        )
+                        .as_bytes(),
+                    );
                 }
-                offered += CHUNK;
-            }
-            offered
-        });
-        let first = first_word(&mut read, start).await;
-        let offered = tokio::time::timeout(Duration::from_secs(20), flood)
-            .await
-            .unwrap_or_else(|_| panic!("{id}: the client was still writing after 20 s"))
-            .unwrap();
-        assert!(
-            offered < OFFERED,
-            "{id}: the server took all {OFFERED} bytes of a flood with a drain cap of {cap}"
-        );
-        assert!(
-            first.after < Duration::from_secs(5),
-            "{id}: {:?}",
-            first.after
-        );
-        if !first.reply.is_empty() {
+                piece.extend(std::iter::repeat_n(b'x', CHUNK));
+                if chunked {
+                    piece.extend_from_slice(
+                        b"
+",
+                    );
+                }
+                let mut offered = 0usize;
+                while offered < OFFERED {
+                    if write.write_all(&piece).await.is_err() {
+                        break;
+                    }
+                    offered += CHUNK;
+                }
+                offered
+            });
+            let first = first_word(&mut read, start).await;
+            let offered = tokio::time::timeout(Duration::from_secs(20), flood)
+                .await
+                .unwrap_or_else(|_| panic!("{id}: the client was still writing after 20 s"))
+                .unwrap();
             assert!(
-                first.reply.starts_with("HTTP/1.1 403"),
-                "{id}: {:?}",
-                first.reply
+                offered < OFFERED,
+                "{id} (chunked: {chunked}): the server took all {OFFERED} bytes of a flood with a drain cap of {cap}"
             );
+            assert!(
+                first.after < Duration::from_secs(5),
+                "{id} (chunked: {chunked}): {:?}",
+                first.after
+            );
+            if !first.reply.is_empty() {
+                let want = if chunked {
+                    "HTTP/1.1 403"
+                } else {
+                    "HTTP/1.1 413"
+                };
+                assert!(first.reply.starts_with(want), "{id}: {:?}", first.reply);
+            }
+            srv.shutdown().await.unwrap();
         }
-        srv.shutdown().await.unwrap();
     }
 }

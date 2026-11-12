@@ -38,6 +38,8 @@ use tower::ServiceExt;
 /// `Connection: close` and a client still sending may not see it. Not drained: HTTP/2 (a reset stream is not a reset connection), a request
 /// that sent `Expect` (the client waits for the answer before it sends the body, and reading would invite it), a body whose declared length is
 /// over the cap (it cannot be drained), and a body something still holds (a response that streams it back).
+/// The cap holds on every adapter: past it the connection is closed, and nothing keeps reading (actix-web, which lingers 5 s and reads without
+/// limit after an early answer by default, is told not to; conformance `tests/drain_bounds.rs` floods all six).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Limits {
