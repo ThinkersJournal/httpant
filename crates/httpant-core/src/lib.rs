@@ -17,7 +17,7 @@ mod router;
 pub use bytes::Bytes;
 pub use http;
 
-pub use body::{Body, BodyLimitExceeded, BoxError};
+pub use body::{Body, BodyLimitExceeded, BodyReadTimeout, BoxError};
 pub use capabilities::{Capabilities, ClientCapabilities, DEFAULT_BODY_LIMIT, Support};
 pub use error::{Error, Result};
 pub use extract::{FromRequest, Path, Query};

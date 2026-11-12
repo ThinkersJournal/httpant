@@ -16,6 +16,14 @@ pub enum Error {
         /// The limit that was exceeded, in bytes.
         limit: usize,
     },
+    /// The client stopped sending the request body: no data for the server's body read timeout.
+    #[error(
+        "the request body stopped arriving for {idle:?}: send the body without long pauses, or ask the operator to raise the body read timeout"
+    )]
+    BodyTimeout {
+        /// How long the body was waited for.
+        idle: std::time::Duration,
+    },
     /// Reading a body failed part-way.
     #[error("body could not be read: {0}; treat the request as failed")]
     Body(BoxError),
@@ -135,6 +143,7 @@ impl Error {
     pub fn status(&self) -> StatusCode {
         match self {
             Error::BodyTooLarge { .. } => StatusCode::PAYLOAD_TOO_LARGE,
+            Error::BodyTimeout { .. } => StatusCode::REQUEST_TIMEOUT,
             Error::Body(_) | Error::NotUtf8 => StatusCode::BAD_REQUEST,
             Error::AdapterNotCompiledIn { .. }
             | Error::Io(_)

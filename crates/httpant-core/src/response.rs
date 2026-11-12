@@ -154,6 +154,9 @@ mod tests {
     fn every_error_variant_has_a_status_and_ends_with_advice() {
         let all = [
             Error::BodyTooLarge { limit: 1 },
+            Error::BodyTimeout {
+                idle: std::time::Duration::from_secs(1),
+            },
             Error::Body("x".into()),
             Error::NotUtf8,
             Error::AdapterNotCompiledIn {

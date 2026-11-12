@@ -421,3 +421,74 @@ pub fn refusal_delivered(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
         Ok(())
     })
 }
+
+/// Case 21: the request body read timeout. The server is started with a short one (300 ms) so the case is quick; the default is 60 s. A
+/// client that sends part of a body and then says nothing is answered `408` by the server itself, whichever adapter runs it; a client that
+/// sends its body in pieces with pauses shorter than the timeout, adding up to longer than it, is read to the end (an idle time, not a total).
+pub fn body_read_timeout(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
+    Box::pin(async move {
+        let idle = std::time::Duration::from_millis(300);
+        let setup = crate::Setup {
+            limits: httpant_server::Limits::default().body_read_timeout(idle),
+            ..crate::Setup::default()
+        };
+        let server = s
+            .start_with(app::app(), setup)
+            .await
+            .map_err(|e| format!("could not start: {e}"))?;
+        let addr = server.addr();
+
+        // A body that stops: ten of a thousand bytes, then silence. The server must give up on it and say so.
+        let mut conn = crate::raw::Conn::open(addr)
+            .await
+            .map_err(|e| format!("could not connect: {e}"))?
+            .with_timeout(std::time::Duration::from_secs(5));
+        conn.write(
+            b"POST /sink HTTP/1.1\r\nHost: conformance\r\nContent-Length: 1000\r\n\r\n0123456789",
+        )
+        .await
+        .map_err(|e| format!("send the start of the body: {e}"))?;
+        let started = std::time::Instant::now();
+        let res = conn.response("POST").await.map_err(|e| {
+            format!("a body that stopped after 10 of 1000 bytes was waited for past 5 s (timeout {idle:?}): {e}")
+        })?;
+        ensure!(
+            res.status == 408,
+            "a body that stopped: expected 408, got {} `{}`",
+            res.status,
+            text(&res)
+        );
+        ensure!(
+            started.elapsed() < std::time::Duration::from_secs(4),
+            "a body that stopped was answered after {:?} with a timeout of {idle:?}",
+            started.elapsed()
+        );
+
+        // A body that keeps moving: ten pieces of two bytes, 120 ms apart (1.2 s in all, four times the timeout), each inside it.
+        let mut conn = crate::raw::Conn::open(addr)
+            .await
+            .map_err(|e| format!("could not connect: {e}"))?
+            .with_timeout(std::time::Duration::from_secs(10));
+        conn.write(b"POST /sink HTTP/1.1\r\nHost: conformance\r\nContent-Length: 20\r\n\r\n")
+            .await
+            .map_err(|e| format!("send the head: {e}"))?;
+        for _ in 0..10 {
+            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+            conn.write(b"xx").await.map_err(|e| {
+                format!("a body arriving in pieces inside the timeout was cut: {e}")
+            })?;
+        }
+        let res = conn
+            .response("POST")
+            .await
+            .map_err(|e| format!("a body arriving in pieces: no answer: {e}"))?;
+        ensure!(
+            res.status == 200 && text(&res) == "got 20",
+            "a body arriving in pieces inside the timeout: expected 200 `got 20`, got {} `{}`",
+            res.status,
+            text(&res)
+        );
+        let _ = server.shutdown().await;
+        Ok(())
+    })
+}

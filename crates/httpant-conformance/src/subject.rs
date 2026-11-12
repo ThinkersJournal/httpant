@@ -51,6 +51,8 @@ pub struct Setup {
     pub tls: Option<httpant_server::TlsAcceptor>,
     /// Accept cleartext HTTP/2 by prior knowledge (case 19); off by default, as everywhere.
     pub h2c: bool,
+    /// The limits to serve with (case 21 shortens the body read timeout); the defaults otherwise.
+    pub limits: httpant_server::Limits,
 }
 
 impl Default for Setup {
@@ -60,6 +62,7 @@ impl Default for Setup {
             trusted_proxies: TrustedProxies::none(),
             tls: None,
             h2c: false,
+            limits: httpant_server::Limits::default(),
         }
     }
 }
@@ -67,6 +70,7 @@ impl Default for Setup {
 fn options(listener: std::net::TcpListener, setup: Setup) -> ServeOptions {
     let opts = ServeOptions::new(listener)
         .trusted_proxies(setup.trusted_proxies)
+        .limits(setup.limits)
         .h2c(setup.h2c);
     let opts = match setup.tls {
         Some(tls) => opts.tls(tls),
@@ -158,6 +162,8 @@ impl Subject for MutantSubject {
             Mutant::IgnoresH2cRequest => setup.h2c = false,
             _ => {}
         }
+        // The limits the case asked for, minus the one the mutant is about.
+        let limits = self.0.limits_over(setup.limits);
         Box::pin(async move {
             let svc = if self.0 == Mutant::NoMiddleware {
                 app.router.into_service()
@@ -177,14 +183,11 @@ impl Subject for MutantSubject {
             if self.0 == Mutant::OffersH2WithoutServingIt {
                 return mutants::serve_http1_only_behind_h2_offer(
                     svc,
-                    options(free_listener()?, setup).limits(self.0.limits()),
+                    options(free_listener()?, setup).limits(limits),
                 );
             }
             HyperAdapter
-                .serve(
-                    svc,
-                    options(free_listener()?, setup).limits(self.0.limits()),
-                )
+                .serve(svc, options(free_listener()?, setup).limits(limits))
                 .await
         })
     }

@@ -39,6 +39,33 @@ impl std::fmt::Display for BodyLimitExceeded {
 
 impl std::error::Error for BodyLimitExceeded {}
 
+/// The error a body reports when no data came for longer than the idle time someone set on it (the server's body read timeout, for one).
+/// [`Body::bytes`] turns it into [`Error::BodyTimeout`], which answers `408`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BodyReadTimeout {
+    idle: std::time::Duration,
+}
+
+impl BodyReadTimeout {
+    /// A body that went `idle` without data.
+    pub fn new(idle: std::time::Duration) -> Self {
+        Self { idle }
+    }
+
+    /// How long the body was waited for.
+    pub fn idle(&self) -> std::time::Duration {
+        self.idle
+    }
+}
+
+impl std::fmt::Display for BodyReadTimeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "no part of the body arrived within {:?}", self.idle)
+    }
+}
+
+impl std::error::Error for BodyReadTimeout {}
+
 /// A streaming HTTP body. Streaming is the representation; buffering is a convenience that always takes an explicit limit.
 ///
 /// There is deliberately no method that reads without a limit (the old axum adapter read with `usize::MAX`).
@@ -71,11 +98,18 @@ impl Body {
         }
         let mut out = BytesMut::new();
         while let Some(frame) = self.frame().await {
-            let frame = frame.map_err(|e| match e.downcast_ref::<BodyLimitExceeded>() {
-                Some(over) => Error::BodyTooLarge {
-                    limit: usize::try_from(over.limit()).unwrap_or(usize::MAX),
-                },
-                None => Error::Body(e),
+            let frame = frame.map_err(|e| {
+                if let Some(over) = e.downcast_ref::<BodyLimitExceeded>() {
+                    Error::BodyTooLarge {
+                        limit: usize::try_from(over.limit()).unwrap_or(usize::MAX),
+                    }
+                } else if let Some(stalled) = e.downcast_ref::<BodyReadTimeout>() {
+                    Error::BodyTimeout {
+                        idle: stalled.idle(),
+                    }
+                } else {
+                    Error::Body(e)
+                }
             })?;
             if let Ok(mut data) = frame.into_data() {
                 if data.remaining() > limit - out.len() {
