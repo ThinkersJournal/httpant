@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.11] - 2026-11-12
+
+- **CI only, no library change:** the advisory `portfolio` job now calls `ciresnave/coderipper/.github/workflows/portfolio.yml@33cc3b7e` (coderipper 0.43.49, coderipper#307), replacing `4bcf55e4` (PM TASK 2026-11-12). Not published.
+
 ## [0.7.10] - 2026-11-12
 
 - **Fix, every adapter (httpant-server; configurant's probe, httpant#70):** a handler (or a limit) that answered HTTP/1.1 without reading the request body, then had the connection closed with that body unread, lost its answer to a TCP reset on Windows: a refused `GET` with a 1 MB or 5 MB body showed the client `ConnectionAborted` and no status, 30 of 30 times (50 B and 70 KB bodies were answered; the 70 KB case reset only under full-suite load, so a smaller drain default is not the cure). The server now reads and discards the unread body before it sends the answer: up to `Limits::max_drain_bytes` (new, default 8 MiB, `0` turns it off) within `Limits::drain_timeout` (new, default 5 s); a body not finished by then makes the answer say `Connection: close`. One wrapper on the service every adapter runs (`ServeOptions::wrap`, new module `drain`), so all six adapters behave alike. Not drained: HTTP/2, a request with `Expect`, a declared length over the cap, a body something still holds (a response that streams it back), no body at all.
