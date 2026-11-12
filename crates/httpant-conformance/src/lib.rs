@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt adapter conformance suite (design `docs/HTTPANT-DESIGN.md`, section 6).
 //!
-//! - [`CASES`]: nineteen cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
+//! - [`CASES`]: twenty cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
 //!   minimal HTTP/1.1 client. The client is deliberately not HTTPAnt, hyper or any adapter, so a defect cannot hide on both ends of a test.
 //! - Every case lists the known-bad [`Mutant`]s it must fail on. [`check_case`] demands both halves: the reference passes **and** every mutant
 //!   fails. A case that passes on its mutant is itself a failing test.
 //! - Cases 1-7 are the old crate's defects restated; cases 8-12 (streaming, shutdown, keep-alive, concurrency, HEAD) need a live connection
-//!   and are in `live`; cases 13 (path encoding), 14 (limits), 15 (shutdown grace) 16 (edge origin), 17 (TLS termination) and 18 (ALPN and HTTP/2) are HTTPAnt's own rules. [`measure`] turns three of them into the capability matrix (`docs/CAPABILITY-MATRIX.md`).
+//!   and are in `live`; cases 13 (path encoding), 14 (limits), 15 (shutdown grace) 16 (edge origin), 17 (TLS termination) and 18 (ALPN and HTTP/2), 19 (the h2c switch) and 20 (a refusal reaches the client) are HTTPAnt's own rules. [`measure`] turns three of them into the capability matrix (`docs/CAPABILITY-MATRIX.md`).
 //!
 //! A new adapter is tested by implementing [`Subject`] for it (or wrapping it in [`AdapterSubject`]) and calling [`run_suite`].
 
@@ -59,7 +59,7 @@ impl std::fmt::Debug for Case {
 }
 
 /// The sixteen cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
-pub const CASES: [Case; 19] = [
+pub const CASES: [Case; 20] = [
     Case {
         number: 1,
         id: "method-fidelity",
@@ -206,6 +206,13 @@ pub const CASES: [Case; 19] = [
         mutants: &[Mutant::H2cOnByDefault, Mutant::IgnoresH2cRequest],
         run: h2_case::h2c_switch,
     },
+    Case {
+        number: 20,
+        id: "refusal-delivered",
+        requirement: "an answer sent without the request body having been read reaches the client, and the client is let finish sending: a handler that refuses a GET carrying a 1.5 MiB body gets its 403 to a client that sends the whole body (paced) before it reads, and a declared body of 5 MiB is answered 413, with no write cut and no reset connection",
+        mutants: &[Mutant::NoDrain],
+        run: cases::refusal_delivered,
+    },
 ];
 
 /// Run every case against `subject`: `(case number, result)` for each.
@@ -273,6 +280,7 @@ mod tests {
             Mutant::FoldMethodToGet,
             Mutant::H2cOnByDefault,
             Mutant::IgnoresH2cRequest,
+            Mutant::NoDrain,
             Mutant::ClampStatus,
             Mutant::NoMiddleware,
             Mutant::HashMapHeaders,
@@ -333,6 +341,19 @@ mod tests {
         assert!(e.contains("`100 Continue` before the body was sent"), "{e}");
     }
 
+    /// The no-drain mutant must fail case 20 because the client got no answer (the reset), not for an unrelated reason.
+    #[tokio::test]
+    async fn the_case_20_mutant_fails_because_the_answer_never_arrived() {
+        let e = CASES[19]
+            .run(&MutantSubject(Mutant::NoDrain))
+            .await
+            .unwrap_err();
+        assert!(
+            e.contains("cut the connection") || e.contains("no answer reached the client"),
+            "{e}"
+        );
+    }
+
     case_test!(case_11_concurrency, 10);
     case_test!(case_12_head, 11);
     case_test!(case_13_path_encoding, 12);
@@ -342,6 +363,7 @@ mod tests {
     case_test!(case_17_tls_terminate, 16);
     case_test!(case_18_http2_alpn, 17);
     case_test!(case_19_h2c_switch, 18);
+    case_test!(case_20_refusal_delivered, 19);
 
     #[test]
     fn client_cases_are_numbered_in_order_and_each_mutant_is_used_once() {
