@@ -104,6 +104,7 @@ pub(crate) mod axum_listener {
     use tokio::net::{TcpListener, TcpStream};
 
     use super::GuardedIo;
+    use crate::connections::{GatedListener, Held};
 
     /// Connection info of a guarded cleartext connection: the peer address.
     #[derive(Clone, Copy, Debug)]
@@ -115,10 +116,19 @@ pub(crate) mod axum_listener {
         }
     }
 
-    pub(crate) struct GuardedListener(pub TcpListener);
+    /// The peer address of a connection on a listener that only takes a slot (cleartext HTTP/2 allowed, nothing to guard).
+    impl axum::extract::connect_info::Connected<IncomingStream<'_, GatedListener<TcpListener>>>
+        for GuardedPeer
+    {
+        fn connect_info(stream: IncomingStream<'_, GatedListener<TcpListener>>) -> Self {
+            Self(*stream.remote_addr())
+        }
+    }
+
+    pub(crate) struct GuardedListener(pub GatedListener<TcpListener>);
 
     impl Listener for GuardedListener {
-        type Io = GuardedIo<TcpStream>;
+        type Io = GuardedIo<Held<TcpStream>>;
         type Addr = SocketAddr;
 
         async fn accept(&mut self) -> (Self::Io, Self::Addr) {

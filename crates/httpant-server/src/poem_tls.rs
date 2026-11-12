@@ -6,6 +6,8 @@ use std::io::Result as IoResult;
 
 use poem::http::uri::Scheme;
 use poem::listener::{Acceptor, TcpAcceptor};
+
+use crate::connections::{GatedPoemAcceptor, Held};
 use poem::web::{LocalAddr, RemoteAddr};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -14,7 +16,7 @@ use tokio_rustls::server::TlsStream;
 
 use crate::TlsAcceptor;
 
-type Ready = (TlsStream<TcpStream>, LocalAddr, RemoteAddr);
+type Ready = (TlsStream<Held<TcpStream>>, LocalAddr, RemoteAddr);
 
 pub(crate) struct TlsPoemAcceptor {
     local: Vec<LocalAddr>,
@@ -23,7 +25,7 @@ pub(crate) struct TlsPoemAcceptor {
 }
 
 impl TlsPoemAcceptor {
-    pub(crate) fn new(mut tcp: TcpAcceptor, tls: TlsAcceptor) -> Self {
+    pub(crate) fn new(mut tcp: GatedPoemAcceptor<TcpAcceptor>, tls: TlsAcceptor) -> Self {
         let local = tcp.local_addr();
         let (tx, ready) = mpsc::channel(128);
         let accepting = tokio::spawn(async move {
@@ -57,7 +59,7 @@ impl Drop for TlsPoemAcceptor {
 }
 
 impl Acceptor for TlsPoemAcceptor {
-    type Io = TlsStream<TcpStream>;
+    type Io = TlsStream<Held<TcpStream>>;
 
     fn local_addr(&self) -> Vec<LocalAddr> {
         self.local.clone()

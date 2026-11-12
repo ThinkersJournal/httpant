@@ -36,6 +36,10 @@ pub struct Capabilities {
     /// Refuses cleartext HTTP/2 unless asked for it, which is the default everywhere it can be done. `No` means the adapter's web library accepts the
     /// h2c preface on a cleartext listener and HTTPAnt cannot stop it (warp, `docs/H2C-POLICY.md`): said in the capability matrix, not hidden.
     pub h2c_refusable: Support,
+    /// Enforces `Limits::max_connections` itself (accepting pauses at the limit and resumes as connections close). `No` means HTTPAnt cannot
+    /// reach the library's accept loop (warp) and the number of connections is whatever the operating system and the library allow:
+    /// said in the capability documents, not hidden.
+    pub connection_limit: Support,
     /// The body limit the adapter applies unless told otherwise, in bytes.
     pub default_body_limit: usize,
 }
@@ -51,6 +55,7 @@ impl Default for Capabilities {
             http2: Support::Unknown,
             h2c: Support::Unknown,
             h2c_refusable: Support::Unknown,
+            connection_limit: Support::Unknown,
             default_body_limit: DEFAULT_BODY_LIMIT,
         }
     }

@@ -24,6 +24,18 @@ pub enum Error {
         /// How long the body was waited for.
         idle: std::time::Duration,
     },
+    /// The server was asked to hold more connections than the process may have open: refused at start, not found out under load.
+    #[error(
+        "the connection limit of {wanted} needs about {needed} open files but this process may have {available}: raise the limit (`ulimit -n`), or lower `Limits::max_connections`"
+    )]
+    ConnectionLimitTooHigh {
+        /// The configured limit.
+        wanted: usize,
+        /// What the limit needs: connections plus a reserve for the listener, files and the rest.
+        needed: usize,
+        /// The process's soft limit on open files.
+        available: usize,
+    },
     /// Reading a body failed part-way.
     #[error("body could not be read: {0}; treat the request as failed")]
     Body(BoxError),
@@ -154,6 +166,7 @@ impl Error {
             | Error::SchemeNotCompiledIn { .. }
             | Error::TlsNotSupported { .. }
             | Error::H2cNotSupported { .. }
+            | Error::ConnectionLimitTooHigh { .. }
             | Error::Tls(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::Timeout(_) | Error::ConnectTimeout(_) | Error::ReadTimeout(_) => {
                 StatusCode::GATEWAY_TIMEOUT
