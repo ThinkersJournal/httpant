@@ -100,6 +100,11 @@ async fn sink(req: Request) -> Result<String, Error> {
     Ok(format!("got {}", bytes.len()))
 }
 
+/// `/refuse`: a `403` that never looks at the request body.
+async fn refuse() -> StatusCode {
+    StatusCode::FORBIDDEN
+}
+
 async fn who(req: Request) -> String {
     format!(
         "{} {} {}",
@@ -199,6 +204,8 @@ pub fn app_with_gates() -> (App, Gates) {
                 }
             }
         })
+        .get("/refuse", refuse)
+        .post("/refuse", refuse)
         .get("/origin", origin)
         .post("/sink", sink)
         .get("/who/:x", who)
