@@ -232,21 +232,27 @@ def heading_for(t, m, version, kind):
     return f"## {version} {EM} {kind}"
 
 
+def pick_kind(kinds):
+    """The heading kind: the first fragment whose kind says "breaking", else the first fragment's."""
+    return next((k for k in kinds if "breaking" in k.lower()), kinds[0])
+
+
+def newest_entry(root):
+    p = os.path.join(root, "CHANGELOG.md")
+    t, crlf = read(p)
+    m = re.search(r"(?m)^## (\[?)`?\d+\.\d+\.\d+", t)
+    return (p, t, crlf, m) if m else die("CHANGELOG.md has no version heading to put the entry above")
+
+
 def changelog_change(root, version, frags):
     if not frags:
         die("no changelog.d/*.md fragment: every pushed change needs a CHANGELOG entry")
     parsed = [parse_fragment(f) for f in frags]
-    kinds = [k for k, _ in parsed]
-    kind = next((k for k in kinds if "breaking" in k.lower()), kinds[0])
-    p = os.path.join(root, "CHANGELOG.md")
-    t, crlf = read(p)
-    m = re.search(r"(?m)^## (\[?)`?\d+\.\d+\.\d+", t)
-    if not m:
-        die("CHANGELOG.md has no version heading to put the entry above")
-    entry = heading_for(t, m, version, kind) + "\n\n" + "\n\n".join(b for _, b in parsed) + "\n\n"
-    if re.search(r"(?m)^---\s*$", t[m.start(): m.start() + 4000]):
-        entry += "---\n\n"
-    return (p, t[: m.start()] + entry + t[m.start():], crlf)
+    p, t, crlf, m = newest_entry(root)
+    heading = heading_for(t, m, version, pick_kind([k for k, _ in parsed]))
+    entry = heading + "\n\n" + "\n\n".join(b for _, b in parsed) + "\n\n"
+    rule = "---\n\n" if re.search(r"(?m)^---\s*$", t[m.start(): m.start() + 4000]) else ""
+    return (p, t[: m.start()] + entry + rule + t[m.start():], crlf)
 
 
 def main():
