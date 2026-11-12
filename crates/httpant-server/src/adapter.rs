@@ -109,15 +109,18 @@ impl ServeOptions {
     /// The service an adapter must serve: `svc` behind this server's limits, its shutdown switch and the [`Origin`](crate::Origin) of each request (the adapter must put a [`PeerAddr`](crate::PeerAddr) in the request's extensions first). Every adapter calls this on the service
     /// it is given (conformance cases 14 and 15).
     pub fn wrap(&self, svc: BoxService) -> BoxService {
-        self.grace.wrap(crate::drain::wrap(
+        self.grace.wrap(crate::idle::wrap(
             self.limits,
-            self.limits.wrap(crate::challenge::wrap(
-                self.challenge.clone(),
-                crate::edge::wrap(
-                    self.trusted_proxies.clone(),
-                    crate::redirect::wrap(self.https_redirect.clone(), svc),
-                ),
-            )),
+            crate::drain::wrap(
+                self.limits,
+                self.limits.wrap(crate::challenge::wrap(
+                    self.challenge.clone(),
+                    crate::edge::wrap(
+                        self.trusted_proxies.clone(),
+                        crate::redirect::wrap(self.https_redirect.clone(), svc),
+                    ),
+                )),
+            ),
         ))
     }
 }
