@@ -10,6 +10,7 @@ mod adapter;
 #[cfg(feature = "axum")]
 mod axum_adapter;
 mod challenge;
+mod connections;
 mod drain;
 mod edge;
 mod grace;
@@ -46,6 +47,7 @@ pub use adapter::{FORCE_WAIT, RunningServer, ServeOptions, ServerAdapter};
 #[cfg(feature = "axum")]
 pub use axum_adapter::AxumAdapter;
 pub use challenge::{CHALLENGE_PREFIX, ChallengeResponder};
+pub use connections::{ConnectionGate, ConnectionPermit};
 pub use edge::{BadProxy, Origin, PeerAddr, Scheme, TrustedProxies};
 pub use grace::{DEFAULT_SHUTDOWN_GRACE, Grace};
 pub use httpant_core as core;

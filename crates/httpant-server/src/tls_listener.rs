@@ -7,6 +7,8 @@ use std::net::SocketAddr;
 
 use axum::serve::{IncomingStream, Listener};
 use tokio::net::TcpListener;
+
+use crate::connections::{GatedListener, Held};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_rustls::server::TlsStream;
@@ -25,23 +27,18 @@ impl axum::extract::connect_info::Connected<IncomingStream<'_, TlsListener>> for
 
 pub(crate) struct TlsListener {
     local: SocketAddr,
-    ready: mpsc::Receiver<(TlsStream<tokio::net::TcpStream>, SocketAddr)>,
+    ready: mpsc::Receiver<(TlsStream<Held<tokio::net::TcpStream>>, SocketAddr)>,
     accepting: JoinHandle<()>,
 }
 
 impl TlsListener {
-    pub(crate) fn new(tcp: TcpListener, acceptor: TlsAcceptor) -> Self {
-        let local = tcp
-            .local_addr()
-            .unwrap_or_else(|_| ([0, 0, 0, 0], 0).into());
+    pub(crate) fn new(mut tcp: GatedListener<TcpListener>, acceptor: TlsAcceptor) -> Self {
+        let local = Listener::local_addr(&tcp).unwrap_or_else(|_| ([0, 0, 0, 0], 0).into());
         let (tx, ready) = mpsc::channel(128);
         let accepting = tokio::spawn(async move {
             loop {
-                let Ok((stream, peer)) = tcp.accept().await else {
-                    // Out of descriptors or a reset on accept: back off briefly rather than spin.
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                    continue;
-                };
+                // A slot first (inside the gated listener), then the accept; axum's own accept backs off on errors by itself.
+                let (stream, peer) = Listener::accept(&mut tcp).await;
                 let (acceptor, tx) = (acceptor.clone(), tx.clone());
                 tokio::spawn(async move {
                     if let Ok(tls) = acceptor.accept(stream).await {
@@ -66,7 +63,7 @@ impl Drop for TlsListener {
 }
 
 impl Listener for TlsListener {
-    type Io = TlsStream<tokio::net::TcpStream>;
+    type Io = TlsStream<Held<tokio::net::TcpStream>>;
     type Addr = SocketAddr;
 
     async fn accept(&mut self) -> (Self::Io, Self::Addr) {

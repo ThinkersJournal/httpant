@@ -101,6 +101,12 @@ impl ServeOptions {
         self
     }
 
+    /// The connection limit as a gate the accept loop passes through (see [`ConnectionGate`](crate::ConnectionGate)). Fails, before anything is
+    /// accepted, when the process cannot hold that many connections.
+    pub fn connection_gate(&self) -> Result<crate::ConnectionGate> {
+        crate::ConnectionGate::new(self.limits.max_connections)
+    }
+
     /// The grace period and its switch; an adapter hands it to [`RunningServer::new`].
     pub fn grace(&self) -> Grace {
         self.grace.clone()

@@ -492,3 +492,91 @@ pub fn body_read_timeout(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
         Ok(())
     })
 }
+
+/// Case 22: the connection limit. Started with a limit of four (an even number: actix-web counts per worker and has two). Four connections
+/// are opened, each with a request answered and the connection kept open, so each holds a slot. A fifth client then sends its request: with the
+/// limit enforced the server has stopped accepting, the client waits in the operating system's queue and gets no answer; when one of the
+/// four closes, the fifth is served. An adapter that declares `connection_limit: No` is held to the opposite, so a declaration that falls
+/// behind the library (warp's accept loop is private to warp) fails here.
+pub fn connection_limit(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
+    Box::pin(async move {
+        use httpant_core::Support;
+        let enforced = match s.declared() {
+            Some(c) => match c.connection_limit {
+                Support::Yes => true,
+                Support::No => false,
+                Support::Unknown => {
+                    return Err(
+                        "the connection_limit capability is not established: declare `Yes` or `No`"
+                            .into(),
+                    );
+                }
+            },
+            None => true,
+        };
+        let limit = 4usize;
+        let setup = crate::Setup {
+            limits: httpant_server::Limits::default().max_connections(limit),
+            ..crate::Setup::default()
+        };
+        let server = s
+            .start_with(app::app(), setup)
+            .await
+            .map_err(|e| format!("could not start: {e}"))?;
+        let addr = server.addr();
+        let timeout = std::time::Duration::from_secs(5);
+
+        let mut held = Vec::new();
+        for i in 0..limit {
+            let mut conn = crate::raw::Conn::open(addr)
+                .await
+                .map_err(|e| format!("could not connect {i}: {e}"))?
+                .with_timeout(timeout);
+            let res = conn
+                .exchange(&RawRequest::new("GET", "/m").header("Connection", "keep-alive"))
+                .await
+                .map_err(|e| format!("connection {i} of {limit} was not served: {e}"))?;
+            ensure!(res.status == 200, "connection {i}: status {}", res.status);
+            held.push(conn);
+        }
+
+        let mut extra = crate::raw::Conn::open(addr)
+            .await
+            .map_err(|e| format!("could not connect the extra client: {e}"))?
+            .with_timeout(std::time::Duration::from_millis(800));
+        extra
+            .send(&RawRequest::new("GET", "/m").header("Connection", "close"))
+            .await
+            .map_err(|e| format!("the extra client could not send: {e}"))?;
+        let early = extra.response("GET").await;
+        if enforced {
+            ensure!(
+                early.is_err(),
+                "with {limit} connections open and a limit of {limit}, a further client was served at once"
+            );
+            // One of the four goes away: the waiting client is let in.
+            drop(held.pop());
+            extra = extra.with_timeout(timeout);
+            let res = extra.response("GET").await.map_err(|e| {
+                format!("a connection closed but the waiting client was never served: {e}")
+            })?;
+            ensure!(
+                res.status == 200,
+                "the waiting client: status {}",
+                res.status
+            );
+        } else {
+            let res = early.map_err(|e| {
+                format!("declares `connection_limit: No` but the further client was not served at once: {e}; the declaration may be out of date")
+            })?;
+            ensure!(
+                res.status == 200,
+                "the further client: status {}",
+                res.status
+            );
+        }
+        drop(held);
+        let _ = server.shutdown().await;
+        Ok(())
+    })
+}

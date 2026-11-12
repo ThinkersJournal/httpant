@@ -58,6 +58,8 @@ impl ServerAdapter for SalvoAdapter {
             Support::No
         };
         c.h2c_refusable = Support::Yes;
+        // `Limits::max_connections`: the accept loop takes a slot before it accepts (`connections.rs`); conformance case 22.
+        c.connection_limit = Support::Yes;
         c
     }
 
@@ -65,11 +67,16 @@ impl ServerAdapter for SalvoAdapter {
         Box::pin(async move {
             let grace = opts.grace();
             let svc = opts.wrap(svc);
+            let gate = opts.connection_gate()?;
             opts.listener.set_nonblocking(true)?;
             let addr = opts.listener.local_addr()?;
             let acceptor = TcpAcceptor::try_from(TcpListener::from_std(opts.listener)?)?;
             let (close, closed) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
             let acceptor = Closable::new(acceptor, Arc::clone(&close), Arc::clone(&closed));
+            let acceptor = crate::connections::GatedSalvoAcceptor {
+                inner: acceptor,
+                gate,
+            };
             #[cfg(feature = "tls")]
             if let Some(tls) = opts.tls.clone() {
                 #[cfg(feature = "http2")]

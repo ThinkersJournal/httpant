@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt adapter conformance suite (design `docs/HTTPANT-DESIGN.md`, section 6).
 //!
-//! - [`CASES`]: twenty-one cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
+//! - [`CASES`]: twenty-two cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
 //!   minimal HTTP/1.1 client. The client is deliberately not HTTPAnt, hyper or any adapter, so a defect cannot hide on both ends of a test.
 //! - Every case lists the known-bad [`Mutant`]s it must fail on. [`check_case`] demands both halves: the reference passes **and** every mutant
 //!   fails. A case that passes on its mutant is itself a failing test.
@@ -59,7 +59,7 @@ impl std::fmt::Debug for Case {
 }
 
 /// The sixteen cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
-pub const CASES: [Case; 21] = [
+pub const CASES: [Case; 22] = [
     Case {
         number: 1,
         id: "method-fidelity",
@@ -220,6 +220,13 @@ pub const CASES: [Case; 21] = [
         mutants: &[Mutant::NoBodyReadTimeout],
         run: cases::body_read_timeout,
     },
+    Case {
+        number: 22,
+        id: "connection-limit",
+        requirement: "`Limits::max_connections` holds: with the limit's worth of connections open, a further client is not served until one closes, and is served once one does (nothing is refused or dropped); an adapter that declares `connection_limit: No` (HTTPAnt cannot reach its accept loop) serves the further client at once, so the declaration is held to what is measured",
+        mutants: &[Mutant::NoConnectionLimit],
+        run: cases::connection_limit,
+    },
 ];
 
 /// Run every case against `subject`: `(case number, result)` for each.
@@ -289,6 +296,7 @@ mod tests {
             Mutant::IgnoresH2cRequest,
             Mutant::NoDrain,
             Mutant::NoBodyReadTimeout,
+            Mutant::NoConnectionLimit,
             Mutant::ClampStatus,
             Mutant::NoMiddleware,
             Mutant::HashMapHeaders,
@@ -383,6 +391,7 @@ mod tests {
     case_test!(case_19_h2c_switch, 18);
     case_test!(case_20_refusal_delivered, 19);
     case_test!(case_21_body_read_timeout, 20);
+    case_test!(case_22_connection_limit, 21);
 
     #[test]
     fn client_cases_are_numbered_in_order_and_each_mutant_is_used_once() {

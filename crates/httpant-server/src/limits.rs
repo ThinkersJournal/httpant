@@ -27,6 +27,7 @@ use tower::ServiceExt;
 /// | total size of header names and values | `431` | 16 KiB |
 /// | request body, declared or streamed | `413` | 2 MiB |
 /// | request body stalled (no data for this long, while a handler waits for it) | `408` | 60 s |
+/// | open connections | accepting pauses until one closes | 10,000 |
 ///
 /// A body over its limit is refused at once when its `Content-Length` says so; a body that grows past it while streaming (chunked, or a lying
 /// `Content-Length`) fails the read with [`httpant_core::Error::BodyTooLarge`], which the handler's error mapping answers with `413`.
@@ -61,7 +62,15 @@ pub struct Limits {
     /// [`httpant_core::Error::BodyTimeout`] (`408`). An idle time, as nginx's `client_body_timeout` is, not a total: a long upload that keeps
     /// moving is never cut. `Duration::ZERO` switches it off ([`Limits::unlimited`] does).
     pub body_read_timeout: Duration,
+    /// Most connections open at once. At the limit the server stops accepting and clients wait in the operating system's queue until a
+    /// connection closes; nothing is refused or dropped. `0` switches it off ([`Limits::unlimited`] does). On Unix the soft open-file limit is raised
+    /// to what the limit needs when it is lower (never past the hard limit); a limit the hard limit cannot hold fails at start with [`httpant_core::Error::ConnectionLimitTooHigh`], not under load.
+    /// Not enforced on warp, whose accept loop HTTPAnt cannot reach (`Capabilities::connection_limit`).
+    pub max_connections: usize,
 }
+
+/// The default for [`Limits::max_connections`].
+pub const DEFAULT_MAX_CONNECTIONS: usize = 10_000;
 
 /// The default for [`Limits::body_read_timeout`].
 pub const DEFAULT_BODY_READ_TIMEOUT: Duration = Duration::from_secs(60);
@@ -83,6 +92,7 @@ impl Default for Limits {
             max_drain_bytes: DEFAULT_MAX_DRAIN_BYTES,
             drain_timeout: DEFAULT_DRAIN_TIMEOUT,
             body_read_timeout: DEFAULT_BODY_READ_TIMEOUT,
+            max_connections: DEFAULT_MAX_CONNECTIONS,
         }
     }
 }
@@ -98,6 +108,7 @@ impl Limits {
             max_drain_bytes: DEFAULT_MAX_DRAIN_BYTES,
             drain_timeout: DEFAULT_DRAIN_TIMEOUT,
             body_read_timeout: Duration::ZERO,
+            max_connections: 0,
         }
     }
 
@@ -140,6 +151,12 @@ impl Limits {
     /// Longest a request body may go without data before the read fails with `408` (`Duration::ZERO`: never), see [`Limits`].
     pub fn body_read_timeout(mut self, idle: Duration) -> Self {
         self.body_read_timeout = idle;
+        self
+    }
+
+    /// Most connections open at once (`0`: no limit), see [`Limits`].
+    pub fn max_connections(mut self, connections: usize) -> Self {
+        self.max_connections = connections;
         self
     }
 
@@ -450,5 +467,7 @@ mod tests {
         assert_eq!(d.drain_timeout, Duration::from_secs(5));
         assert_eq!(d.body_read_timeout, Duration::from_secs(60));
         assert_eq!(Limits::unlimited().body_read_timeout, Duration::ZERO);
+        assert_eq!(d.max_connections, 10_000);
+        assert_eq!(Limits::unlimited().max_connections, 0);
     }
 }

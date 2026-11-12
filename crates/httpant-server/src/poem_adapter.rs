@@ -52,6 +52,8 @@ impl ServerAdapter for PoemAdapter {
             Support::No
         };
         c.h2c_refusable = Support::Yes;
+        // `Limits::max_connections`: the accept loop takes a slot before it accepts (`connections.rs`); conformance case 22.
+        c.connection_limit = Support::Yes;
         c
     }
 
@@ -59,9 +61,13 @@ impl ServerAdapter for PoemAdapter {
         Box::pin(async move {
             let grace = opts.grace();
             let svc = opts.wrap(svc);
+            let gate = opts.connection_gate()?;
             opts.listener.set_nonblocking(true)?;
             let addr = opts.listener.local_addr()?;
-            let acceptor = TcpAcceptor::from_std(opts.listener)?;
+            let acceptor = crate::connections::GatedPoemAcceptor {
+                inner: TcpAcceptor::from_std(opts.listener)?,
+                gate,
+            };
             // poem wants a `Sync` endpoint and the boxed service is only `Send`: keep it behind a mutex held just long enough to clone it.
             let shared = Arc::new(Mutex::new(svc));
             let endpoint = poem::endpoint::make(move |req: poem::Request| {

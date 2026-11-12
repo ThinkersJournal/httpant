@@ -46,6 +46,8 @@ impl ServerAdapter for AxumAdapter {
             Support::No
         };
         c.h2c_refusable = Support::Yes;
+        // `Limits::max_connections`: the accept loop takes a slot before it accepts (`connections.rs`); conformance case 22.
+        c.connection_limit = Support::Yes;
         c
     }
 
@@ -53,9 +55,13 @@ impl ServerAdapter for AxumAdapter {
         Box::pin(async move {
             let grace = opts.grace();
             let svc = opts.wrap(svc);
+            let gate = opts.connection_gate()?;
             opts.listener.set_nonblocking(true)?;
             let addr = opts.listener.local_addr()?;
-            let listener = TcpListener::from_std(opts.listener)?;
+            let listener = crate::connections::GatedListener {
+                inner: TcpListener::from_std(opts.listener)?,
+                gate,
+            };
             // axum wants a `Sync` service and the boxed one is only `Send`: keep it behind a mutex held just long enough to clone it.
             let shared = Arc::new(Mutex::new(svc));
             let app = axum::Router::new().fallback_service(tower::service_fn(
@@ -135,7 +141,9 @@ impl ServerAdapter for AxumAdapter {
             let task = tokio::spawn(async move {
                 let _ = axum::serve(
                     listener,
-                    app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+                    app.into_make_service_with_connect_info::<
+                        crate::preface_guard::axum_listener::GuardedPeer,
+                    >(),
                 )
                 .with_graceful_shutdown(async move {
                     let _ = stopped.await;
