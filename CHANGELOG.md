@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.7] - 2026-11-11
+
+- **ROADMAP corrected against the forge (docs only, PM TASK):** G8 now says the hub entry is flipped (easyants `registry.toml` has `repo = "ThinkersJournal/httpant"` and `card = "required"`, easyants#4 `e62bce9`); "nothing is published" and "the client speaks plain http only" were stale and are marked as written-then; rows 11 and 14 updated (14: published in 0.7.5, tag `v0.7.5`). Checked against crates.io (all four crates have 0.5.19, 0.5.21, 0.5.22, 0.7.1, 0.7.5), the repository's tags, and PRs #17, #18, #37 (merged). Not checked: the PM's acceptance of the patent sweep (G11, row 11) and row 12's flaky-test history, which only this repository records. Not published.
+
 ## [0.7.6] - 2026-11-11
 
 - **Benchmark harness follow-ups, ROADMAP row 5 (`httpant-bench`, unpublished; no library change):** per-round figures kept and the table shows the worst and best per-round ratio (default 11 rounds); a second route, `GET /items/:id` with `Path<Item>` and a handler that computes, written natively for each bare library (`--routes constant,item`); the response checker no longer allocates; a **ceiling** server (a bare TCP server answering every read with the right bytes) run through the same generator (`--load-threads` to vary it). Measured at `033b949` on Windows: the ceiling (about 41,000 req/s) equals what the bare libraries reach, so the generator or the machine was the limit and the ratios of hyper, axum and poem are upper bounds; warp's 0.62 to 0.69 is below it and real. Numbers and caveats in `docs/BENCHMARKS.md`. CI: CodeRipper portfolio workflow pinned to `4bcf55e4` (PM TASK 2026-11-11). Not published.
