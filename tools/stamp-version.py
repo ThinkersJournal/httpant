@@ -37,8 +37,11 @@ def read(path):
 
 
 def write(path, text, crlf):
+    # baracuda: encode BEFORE opening (a failed encode must not truncate the file) and keep non-UTF-8
+    # bytes (cp1252 em dashes in CHANGELOG.md) through surrogateescape.
+    data = (text.replace("\n", "\r\n") if crlf else text).encode("utf-8", errors="surrogateescape")
     with open(path, "wb") as f:
-        f.write((text.replace("\n", "\r\n") if crlf else text).encode("utf-8"))
+        f.write(data)
 
 
 def die(msg):
@@ -135,6 +138,12 @@ def version_changes(root, old, new):
             lambda m: m.group(1) + new + '"',
             t,
         )
+        # version before path: `x = { version = "old", path = ".." }`
+        t = re.sub(
+            r'(?m)^(\s*[\w.-]+\s*=\s*\{[^}\n]*version\s*=\s*"=?)' + q + r'("[^}\n]*path\s*=)',
+            lambda m: m.group(1) + new + m.group(2),
+            t,
+        )
         if t != orig:
             out.append((p, t, crlf))
     lock = os.path.join(root, "Cargo.lock")
@@ -145,14 +154,39 @@ def version_changes(root, old, new):
         orig = t
         for nm in names:
             t = re.sub(r'(name = "' + re.escape(nm) + r'"\nversion = ")' + q + '"', lambda m: m.group(1) + new + '"', t)
+            # dependency refs `"name OLD"` (written when the lock holds two versions of the name)
+            t = re.sub(r'(?m)^(\s*")' + re.escape(nm) + ' ' + q + r'(")', lambda m: m.group(1) + nm + ' ' + new + m.group(2), t)
         if t == orig:
             die("Cargo.lock: no workspace crate entry carries the old version")
         out.append((lock, t, crlf))
+    # baracuda: other tracked Cargo.lock files (tools/kiss-ref-diff/Cargo.lock) naming a stamped crate.
+    for rel in tracked(root, "*Cargo.lock"):
+        if rel == "Cargo.lock":
+            continue
+        p = os.path.join(root, rel)
+        t, crlf = read(p)
+        orig = t
+        for nm in names:
+            t = re.sub(r'(name = "' + re.escape(nm) + r'"\nversion = ")' + q + '"', lambda m: m.group(1) + new + '"', t)
+            # dependency refs `"name OLD"` (written when the lock holds two versions of the name)
+            t = re.sub(r'(?m)^(\s*")' + re.escape(nm) + ' ' + q + r'(")', lambda m: m.group(1) + nm + ' ' + new + m.group(2), t)
+        if t != orig:
+            out.append((p, t, crlf))
     extra = os.path.join(root, "tools", "stamp-extra.txt")
     if os.path.exists(extra):
         for line in read(extra)[0].splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
+                continue
+            if " ~ " in line:
+                # baracuda: `path ~ REGEX`: a present-tense statement; REGEX has {old} and ONE group (text kept before the version).
+                line, rx = line.split(" ~ ", 1)
+                p = os.path.join(root, line.strip())
+                t, crlf = read(p)
+                t2, n = re.subn(rx.strip().replace("{old}", q) + r"(?![\w.-])", lambda m: m.group(1) + new, t)
+                if n != 1:
+                    die(f"{line}: expected exactly one match for the version statement, found {n}")
+                out.append((p, t2, crlf))
                 continue
             p = os.path.join(root, line)
             t, crlf = read(p)
