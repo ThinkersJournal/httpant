@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.8] - 2026-11-11
+
+- **Tooling only, no library change (PM TASK, CireSnave 2026-11-12):** from here a PR adds one `changelog.d/<topic>.md` and never edits `CHANGELOG.md`, a `Cargo.toml` version or `Cargo.lock`; the PM stamps the number at merge with `python tools/stamp-version.py <version>`. Added `tools/stamp-version.py`, `tools/check-fragment.py`, `.github/workflows/changelog-fragment.yml` (a PR must carry exactly one fragment or bump the version itself) and `changelog.d/README.md`, copied from the portfolio kit (v3). Tested: with a throwaway fragment, `stamp-version.py 99.99.99 --dry-run` lists `Cargo.toml`, `Cargo.lock` and `CHANGELOG.md` and nothing else; a real stamp on a scratch worktree left the old version in no manifest and no `Cargo.lock` entry, and `cargo metadata --locked --offline` held. No `=X.Y.Z` pins exist outside `docs/`, so no `tools/stamp-extra.txt`. Not published.
+
 ## [0.7.7] - 2026-11-11
 
 - **ROADMAP corrected against the forge (docs only, PM TASK):** G8 now says the hub entry is flipped (easyants `registry.toml` has `repo = "ThinkersJournal/httpant"` and `card = "required"`, easyants#4 `e62bce9`); "nothing is published" and "the client speaks plain http only" were stale and are marked as written-then; rows 11 and 14 updated (14: published in 0.7.5, tag `v0.7.5`). Checked against crates.io (all four crates have 0.5.19, 0.5.21, 0.5.22, 0.7.1, 0.7.5), the repository's tags, and PRs #17, #18, #37 (merged). Not checked: the PM's acceptance of the patent sweep (G11, row 11) and row 12's flaky-test history, which only this repository records. Not published.
