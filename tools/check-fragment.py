@@ -13,12 +13,16 @@ Compares HEAD with the merge base of <base-ref>. A PR must do exactly one of:
 Doing both, adding two fragments, or doing neither fails, with the reason. Standard library only.
 """
 import re
-import subprocess
+import shutil
+import subprocess  # nosec B404 - runs `git` with fixed arguments in a developer or CI checkout
 import sys
 
 
 def git(*args):
-    return subprocess.run(["git", *args], check=True, capture_output=True, text=True).stdout
+    exe = shutil.which("git")
+    if not exe:
+        raise SystemExit("check-fragment: git is not on PATH")
+    return subprocess.run([exe, *args], check=True, capture_output=True, text=True).stdout  # nosec B603 - fixed arguments
 
 
 def version_lines(diff):

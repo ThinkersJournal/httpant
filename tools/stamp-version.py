@@ -18,16 +18,21 @@ An optional `tools/stamp-current.txt` (one line: a Cargo.toml path) names the ma
 repo has crates on independent versions; only crates at that version are stamped.
 
 Extra files that pin the version as `=X.Y.Z` (README install lines) are listed one path per line in
-`tools/stamp-extra.txt` (optional). Standard library only. Line endings of each file are kept. Files are enumerated with
+`tools/stamp-extra.txt` (optional); a line `path ~ REGEX` stamps a present-tense statement (REGEX has `{old}` and ONE group
+kept before the version). Standard library only. Line endings of each file are kept. Files are enumerated with
 `git ls-files`, never a disk walk.
 """
 import argparse
+import datetime
 import os
 import re
-import subprocess
+import shutil
+import subprocess  # nosec B404 - runs `git ls-files` with fixed arguments in a developer or CI checkout
 import sys
 
 EM = "—"
+NAME_RX = re.compile(r'(?m)^\s*name\s*=\s*"([^"]+)"')
+VERSION_RX = r'(?m)^\s*version\s*=\s*"(\d+\.\d+\.\d+[^"]*)"'
 
 
 def read(path):
@@ -37,8 +42,7 @@ def read(path):
 
 
 def write(path, text, crlf):
-    # baracuda: encode BEFORE opening (a failed encode must not truncate the file) and keep non-UTF-8
-    # bytes (cp1252 em dashes in CHANGELOG.md) through surrogateescape.
+    # Encode BEFORE opening (a failed encode must not truncate the file); non-UTF-8 bytes survive via surrogateescape.
     data = (text.replace("\n", "\r\n") if crlf else text).encode("utf-8", errors="surrogateescape")
     with open(path, "wb") as f:
         f.write(data)
@@ -50,153 +54,156 @@ def die(msg):
 
 
 def tracked(root, pattern):
-    out = subprocess.run(["git", "-C", root, "ls-files", pattern], capture_output=True, text=True)
+    git = shutil.which("git") or die("git is not on PATH")
+    out = subprocess.run([git, "-C", root, "ls-files", pattern], capture_output=True, text=True, check=False)  # nosec B603 - fixed arguments
     if out.returncode != 0:
         die("git ls-files failed: " + out.stderr.strip())
-    return [l for l in out.stdout.splitlines() if l]
+    return [line for line in out.stdout.splitlines() if line]
+
+
+def table_match(text, table):
+    return re.search(r"(?ms)^\[" + re.escape(table) + r"\]\s*$(.*?)(?=^\[|\Z)", text)
 
 
 def package_version(text):
     """Version in the [package] table, or None; 'workspace' when `version.workspace = true`."""
-    m = re.search(r"(?ms)^\[package\]\s*$(.*?)(?=^\[|\Z)", text)
+    m = table_match(text, "package")
     if not m:
         return None
-    body = m.group(1)
-    v = re.search(r'(?m)^\s*version\s*=\s*"(\d+\.\d+\.\d+[^"]*)"', body)
+    v = re.search(VERSION_RX, m.group(1))
     if v:
         return v.group(1)
-    if re.search(r"(?m)^\s*version\.workspace\s*=\s*true", body):
-        return "workspace"
-    return None
+    return "workspace" if re.search(r"(?m)^\s*version\.workspace\s*=\s*true", m.group(1)) else None
 
 
 def workspace_version(text):
-    m = re.search(r"(?ms)^\[workspace\.package\]\s*$(.*?)(?=^\[|\Z)", text)
-    if not m:
-        return None
-    v = re.search(r'(?m)^\s*version\s*=\s*"(\d+\.\d+\.\d+[^"]*)"', m.group(1))
+    m = table_match(text, "workspace.package")
+    v = re.search(VERSION_RX, m.group(1)) if m else None
     return v.group(1) if v else None
 
 
-def current_version(root):
+def literal(version):
+    return version if version and version != "workspace" else None
+
+
+def pinned_version(root):
     pin = os.path.join(root, "tools", "stamp-current.txt")
-    if os.path.exists(pin):
-        rel = read(pin)[0].strip().splitlines()[0].strip()
-        text, _ = read(os.path.join(root, rel))
-        v = package_version(text) or workspace_version(text)
-        if not v or v == "workspace":
-            die(f"tools/stamp-current.txt names {rel}, which has no literal version")
+    if not os.path.exists(pin):
+        return None
+    rel = read(pin)[0].strip().splitlines()[0].strip()
+    text, _ = read(os.path.join(root, rel))
+    v = literal(package_version(text)) or workspace_version(text)
+    return v or die(f"tools/stamp-current.txt names {rel}, which has no literal version")
+
+
+def current_version(root):
+    v = pinned_version(root)
+    if v:
         return v
     top, _ = read(os.path.join(root, "Cargo.toml"))
-    wv = workspace_version(top)
-    if wv:
-        return wv
-    pv = package_version(top)
-    if pv and pv != "workspace":
-        return pv
-    for p in tracked(root, "*Cargo.toml"):
-        v = package_version(read(os.path.join(root, p))[0])
-        if v and v != "workspace":
-            return v
-    die("no crate version found")
+    v = workspace_version(top) or literal(package_version(top))
+    for rel in ([] if v else tracked(root, "*Cargo.toml")):
+        v = v or literal(package_version(read(os.path.join(root, rel))[0]))
+    return v or die("no crate version found")
 
 
 def set_table_version(text, table, old, new):
-    """Replace `version = "old"` inside one [table]; returns (text, changed)."""
-    pat = re.compile(r"(?ms)^(\[" + re.escape(table) + r"\]\s*$)(.*?)(?=^\[|\Z)")
-    m = pat.search(text)
+    """Replace `version = "old"` inside one [table]."""
+    m = table_match(text, table)
     if not m:
-        return text, False
-    body, n = re.subn(r'(?m)^(\s*version\s*=\s*")' + re.escape(old) + '"', lambda x: x.group(1) + new + '"', m.group(2))
-    return (text[: m.start(2)] + body + text[m.end(2):], n > 0)
+        return text
+    body = re.sub(r'(?m)^(\s*version\s*=\s*")' + re.escape(old) + '"', lambda x: x.group(1) + new + '"', m.group(1))
+    return text[: m.start(1)] + body + text[m.end(1):]
 
 
-def version_changes(root, old, new):
-    q = re.escape(old)
+def stamp_dep_lines(t, q, new):
+    """Inline-table dependency lines carrying `path` and `version`, in either order (an `=` pin is kept)."""
+    t = re.sub(
+        r'(?m)^(\s*[\w.-]+\s*=\s*\{[^}\n]*path\s*=\s*"[^"]+"[^}\n]*version\s*=\s*"=?)' + q + '"',
+        lambda m: m.group(1) + new + '"',
+        t,
+    )
+    return re.sub(
+        r'(?m)^(\s*[\w.-]+\s*=\s*\{[^}\n]*version\s*=\s*"=?)' + q + r'("[^}\n]*path\s*=)',
+        lambda m: m.group(1) + new + m.group(2),
+        t,
+    )
+
+
+def stamp_manifest(t, old, new, ws_old):
+    """One Cargo.toml: returns (new text, crate name when this crate carries the version else None)."""
+    pv = package_version(t)
+    nm = NAME_RX.search(t)
+    carries = pv == old or (pv == "workspace" and ws_old)
+    if pv == old:
+        t = set_table_version(t, "package", old, new)
+    if workspace_version(t) == old:
+        t = set_table_version(t, "workspace.package", old, new)
+    return stamp_dep_lines(t, re.escape(old), new), (nm.group(1) if carries and nm else None)
+
+
+def manifest_changes(root, old, new):
     out, names = [], []
-    top_text, _ = read(os.path.join(root, "Cargo.toml"))
-    ws_old = workspace_version(top_text) == old
+    ws_old = workspace_version(read(os.path.join(root, "Cargo.toml"))[0]) == old
     for rel in tracked(root, "*Cargo.toml"):
         p = os.path.join(root, rel)
         t, crlf = read(p)
-        orig = t
-        pv = package_version(t)
-        if pv == "workspace" and ws_old:
-            nm = re.search(r'(?m)^\s*name\s*=\s*"([^"]+)"', t)
-            if nm:
-                names.append(nm.group(1))
-        if pv == old:
-            t, _ = set_table_version(t, "package", old, new)
-            nm = re.search(r'(?m)^\s*name\s*=\s*"([^"]+)"', t)
-            if nm:
-                names.append(nm.group(1))
-        if workspace_version(t) == old:
-            t, _ = set_table_version(t, "workspace.package", old, new)
-        # path + version dependency lines (inline tables), exact or =pinned
-        t = re.sub(
-            r'(?m)^(\s*[\w.-]+\s*=\s*\{[^}\n]*path\s*=\s*"[^"]+"[^}\n]*version\s*=\s*"=?)' + q + '"',
-            lambda m: m.group(1) + new + '"',
-            t,
-        )
-        # version before path: `x = { version = "old", path = ".." }`
-        t = re.sub(
-            r'(?m)^(\s*[\w.-]+\s*=\s*\{[^}\n]*version\s*=\s*"=?)' + q + r'("[^}\n]*path\s*=)',
-            lambda m: m.group(1) + new + m.group(2),
-            t,
-        )
-        if t != orig:
-            out.append((p, t, crlf))
-    lock = os.path.join(root, "Cargo.lock")
-    if os.path.exists(lock) and not names:
+        t2, name = stamp_manifest(t, old, new, ws_old)
+        names.extend([name] if name else [])
+        if t2 != t:
+            out.append((p, t2, crlf))
+    return out, names
+
+
+def stamp_lock(t, names, q, new):
+    for nm in names:
+        t = re.sub(r'(name = "' + re.escape(nm) + r'"\nversion = ")' + q + '"', lambda m: m.group(1) + new + '"', t)
+        # dependency refs `"name OLD"` (written when the lock holds two versions of the name)
+        t = re.sub(r'(?m)^(\s*")' + re.escape(nm) + " " + q + r'(")', lambda m: m.group(1) + nm + " " + new + m.group(2), t)
+    return t
+
+
+def lock_changes(root, names, old, new):
+    out, q = [], re.escape(old)
+    root_lock = os.path.join(root, "Cargo.lock")
+    if os.path.exists(root_lock) and not names:
         die("Cargo.lock exists but no crate was identified as carrying the version")
-    if os.path.exists(lock) and names:
-        t, crlf = read(lock)
-        orig = t
-        for nm in names:
-            t = re.sub(r'(name = "' + re.escape(nm) + r'"\nversion = ")' + q + '"', lambda m: m.group(1) + new + '"', t)
-            # dependency refs `"name OLD"` (written when the lock holds two versions of the name)
-            t = re.sub(r'(?m)^(\s*")' + re.escape(nm) + ' ' + q + r'(")', lambda m: m.group(1) + nm + ' ' + new + m.group(2), t)
-        if t == orig:
-            die("Cargo.lock: no workspace crate entry carries the old version")
-        out.append((lock, t, crlf))
-    # baracuda: other tracked Cargo.lock files (tools/kiss-ref-diff/Cargo.lock) naming a stamped crate.
     for rel in tracked(root, "*Cargo.lock"):
-        if rel == "Cargo.lock":
-            continue
         p = os.path.join(root, rel)
         t, crlf = read(p)
-        orig = t
-        for nm in names:
-            t = re.sub(r'(name = "' + re.escape(nm) + r'"\nversion = ")' + q + '"', lambda m: m.group(1) + new + '"', t)
-            # dependency refs `"name OLD"` (written when the lock holds two versions of the name)
-            t = re.sub(r'(?m)^(\s*")' + re.escape(nm) + ' ' + q + r'(")', lambda m: m.group(1) + nm + ' ' + new + m.group(2), t)
-        if t != orig:
-            out.append((p, t, crlf))
-    extra = os.path.join(root, "tools", "stamp-extra.txt")
-    if os.path.exists(extra):
-        for line in read(extra)[0].splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if " ~ " in line:
-                # baracuda: `path ~ REGEX`: a present-tense statement; REGEX has {old} and ONE group (text kept before the version).
-                line, rx = line.split(" ~ ", 1)
-                p = os.path.join(root, line.strip())
-                t, crlf = read(p)
-                t2, n = re.subn(rx.strip().replace("{old}", q) + r"(?![\w.-])", lambda m: m.group(1) + new, t)
-                if n != 1:
-                    die(f"{line}: expected exactly one match for the version statement, found {n}")
-                out.append((p, t2, crlf))
-                continue
-            p = os.path.join(root, line)
-            t, crlf = read(p)
-            t2, n = re.subn(r"=" + q + r"\b", "=" + new, t)
-            if n == 0:
-                die(f"{line}: no =old pin")
+        t2 = stamp_lock(t, names, q, new)
+        if t2 == t and p == root_lock:
+            die("Cargo.lock: no workspace crate entry carries the old version")
+        if t2 != t:
             out.append((p, t2, crlf))
-    if not out:
-        die("nothing carries the old version")
     return out
+
+
+def extra_change(root, line, q, new):
+    """One line of tools/stamp-extra.txt: `path` (an `=old` pin) or `path ~ REGEX` (a present-tense statement)."""
+    path, _, rx = line.partition(" ~ ")
+    p = os.path.join(root, path.strip())
+    t, crlf = read(p)
+    if not rx:
+        t2, n = re.subn(r"=" + q + r"\b", "=" + new, t)
+        return (p, t2, crlf) if n else die(f"{path}: no =old pin")
+    t2, n = re.subn(rx.strip().replace("{old}", q) + r"(?![\w.-])", lambda m: m.group(1) + new, t)
+    return (p, t2, crlf) if n == 1 else die(f"{path}: expected exactly one match for the version statement, found {n}")
+
+
+def extra_changes(root, old, new):
+    extra = os.path.join(root, "tools", "stamp-extra.txt")
+    if not os.path.exists(extra):
+        return []
+    lines = [line.strip() for line in read(extra)[0].splitlines()]
+    return [extra_change(root, line, re.escape(old), new) for line in lines if line and not line.startswith("#")]
+
+
+def version_changes(root, old, new):
+    out, names = manifest_changes(root, old, new)
+    out += lock_changes(root, names, old, new)
+    out += extra_changes(root, old, new)
+    return out or die("nothing carries the old version")
 
 
 def fragments(directory):
@@ -213,27 +220,30 @@ def parse_fragment(path):
     return head[len("kind:"):].strip(), body.strip("\n")
 
 
+def heading_for(t, m, version, kind):
+    """The new entry's heading, in the style of the newest existing one."""
+    bracket = m.group(1) == "["
+    if re.match(r"^## \[?`?\d+\.\d+\.\d+[^\n]*? - \d{4}-\d{2}-\d{2}\b", t[m.start():]):
+        return f"## {'[' + version + ']' if bracket else version} - {datetime.date.today().isoformat()}"
+    if bracket:
+        return f"## [{version}] {EM} {kind}"
+    if t[m.start():].startswith("## `"):
+        return f"## `{version}` {EM} {kind}"
+    return f"## {version} {EM} {kind}"
+
+
 def changelog_change(root, version, frags):
     if not frags:
         die("no changelog.d/*.md fragment: every pushed change needs a CHANGELOG entry")
-    kinds, bodies = [], []
-    for f in frags:
-        k, b = parse_fragment(f)
-        kinds.append(k)
-        bodies.append(b)
+    parsed = [parse_fragment(f) for f in frags]
+    kinds = [k for k, _ in parsed]
     kind = next((k for k in kinds if "breaking" in k.lower()), kinds[0])
     p = os.path.join(root, "CHANGELOG.md")
     t, crlf = read(p)
     m = re.search(r"(?m)^## (\[?)`?\d+\.\d+\.\d+", t)
     if not m:
         die("CHANGELOG.md has no version heading to put the entry above")
-    if m.group(1) == "[":
-        heading = f"## [{version}] {EM} {kind}"
-    elif t[m.start():].startswith("## `"):
-        heading = f"## `{version}` {EM} {kind}"
-    else:
-        heading = f"## {version} {EM} {kind}"
-    entry = heading + "\n\n" + "\n\n".join(bodies) + "\n\n"
+    entry = heading_for(t, m, version, kind) + "\n\n" + "\n\n".join(b for _, b in parsed) + "\n\n"
     if re.search(r"(?m)^---\s*$", t[m.start(): m.start() + 4000]):
         entry += "---\n\n"
     return (p, t[: m.start()] + entry + t[m.start():], crlf)
