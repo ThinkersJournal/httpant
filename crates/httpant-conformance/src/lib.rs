@@ -209,7 +209,7 @@ pub const CASES: [Case; 20] = [
     Case {
         number: 20,
         id: "refusal-delivered",
-        requirement: "an answer sent without the request body having been read reaches the client: a handler that refuses a GET carrying a 1.5 MiB body gets its 403 to a client that sends the whole body before it reads, and a declared body of 5 MiB is answered 413, not a reset connection",
+        requirement: "an answer sent without the request body having been read reaches the client, and the client is let finish sending: a handler that refuses a GET carrying a 1.5 MiB body gets its 403 to a client that sends the whole body (paced) before it reads, and a declared body of 5 MiB is answered 413, with no write cut and no reset connection",
         mutants: &[Mutant::NoDrain],
         run: cases::refusal_delivered,
     },
@@ -348,7 +348,10 @@ mod tests {
             .run(&MutantSubject(Mutant::NoDrain))
             .await
             .unwrap_err();
-        assert!(e.contains("no answer reached the client"), "{e}");
+        assert!(
+            e.contains("cut the connection") || e.contains("no answer reached the client"),
+            "{e}"
+        );
     }
 
     case_test!(case_11_concurrency, 10);

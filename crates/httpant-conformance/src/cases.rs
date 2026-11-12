@@ -379,10 +379,12 @@ pub fn limits(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
     })
 }
 
-/// Case 20: an answer sent without the request body having been read reaches the client. The client writes the whole body first and only then
-/// reads (the way a simple client does), so a server that answers and closes with the body unread, and so resets the connection on a stack
-/// that does, shows the client no status at all. Two ways to answer early: the handler refuses (a `403` from `/refuse`, which never reads the
-/// body; 1.5 MiB is under the body limit, so the limit is not what answers) and the server's own limit refuses (a declared 5 MiB, `413`).
+/// Case 20: an answer sent without the request body having been read reaches the client, and the client is let finish sending. The body goes
+/// out in paced pieces and is all written before the answer is read, the way a client uploading to a server that has already decided to refuse
+/// does. A server that answers and closes with the body unread makes the stack reset the connection: on Windows the answer is then lost (the
+/// client reads `ConnectionAborted`), on Linux it stays readable but the client's next write fails; either shows here. Two ways to answer early:
+/// the handler refuses (a `403` from `/refuse`, which never reads the body; 1.5 MiB is under the body limit, so the limit is not what answers)
+/// and the server's own limit refuses (a declared 5 MiB, `413`).
 pub fn refusal_delivered(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
     Box::pin(async move {
         let server = serve!(s);
@@ -395,9 +397,17 @@ pub fn refusal_delivered(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
                 .await
                 .map_err(|e| format!("could not connect: {e}"))?
                 .with_timeout(std::time::Duration::from_secs(15));
-            let request = RawRequest::new("GET", "/refuse").body(vec![b'x'; size]);
-            // The write may fail if the server cut the connection; what the client then reads is what the case is about.
-            let _ = conn.write(&request.to_bytes()).await;
+            let bytes = RawRequest::new("GET", "/refuse")
+                .body(vec![b'x'; size])
+                .to_bytes();
+            for piece in bytes.chunks(64 * 1024) {
+                conn.write(piece).await.map_err(|e| {
+                    format!(
+                        "a GET with a {size}-byte body, {what}: the server cut the connection before the body was sent: {e}"
+                    )
+                })?;
+                tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+            }
             let res = conn.response("GET").await.map_err(|e| {
                 format!("a GET with a {size}-byte body, {what}: no answer reached the client: {e}")
             })?;
