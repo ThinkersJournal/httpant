@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.9] - 2026-11-12
+
+- **CI only, no library change:** the advisory `portfolio` job now calls `ciresnave/coderipper/.github/workflows/portfolio.yml@33cc3b7e` (coderipper 0.43.49, coderipper#307), replacing `4bcf55e4` (PM TASK 2026-11-12). Not published.
+
 ## [0.7.8] - 2026-11-11
 
 - **Tooling only, no library change (PM TASK, CireSnave 2026-11-12):** from here a PR adds one `changelog.d/<topic>.md` and never edits `CHANGELOG.md`, a `Cargo.toml` version or `Cargo.lock`; the PM stamps the number at merge with `python tools/stamp-version.py <version>`. Added `tools/stamp-version.py`, `tools/check-fragment.py`, `.github/workflows/changelog-fragment.yml` (a PR must carry exactly one fragment or bump the version itself) and `changelog.d/README.md`, copied from the portfolio kit (v3). Tested: with a throwaway fragment, `stamp-version.py 99.99.99 --dry-run` lists `Cargo.toml`, `Cargo.lock` and `CHANGELOG.md` and nothing else; a real stamp on a scratch worktree left the old version in no manifest and no `Cargo.lock` entry, and `cargo metadata --locked --offline` held. No `=X.Y.Z` pins exist outside `docs/`, so no `tools/stamp-extra.txt`. Not published.
