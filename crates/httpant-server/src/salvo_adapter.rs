@@ -60,6 +60,8 @@ impl ServerAdapter for SalvoAdapter {
         c.h2c_refusable = Support::Yes;
         // `Limits::max_connections`: the accept loop takes a slot before it accepts (`connections.rs`); conformance case 22.
         c.connection_limit = Support::Yes;
+        // `Limits::header_read_timeout` is set on the library's own head timer; conformance case 23.
+        c.header_read_timeout = Support::Yes;
         c
     }
 
@@ -68,6 +70,7 @@ impl ServerAdapter for SalvoAdapter {
             let grace = opts.grace();
             let svc = opts.wrap(svc);
             let gate = opts.connection_gate()?;
+            let header_timeout = opts.limits.header_read_timeout;
             opts.listener.set_nonblocking(true)?;
             let addr = opts.listener.local_addr()?;
             let acceptor = TcpAcceptor::try_from(TcpListener::from_std(opts.listener)?)?;
@@ -82,14 +85,32 @@ impl ServerAdapter for SalvoAdapter {
                 #[cfg(feature = "http2")]
                 let tls = tls.alpn_protocols(&[b"h2", b"http/1.1"]);
                 let acceptor = crate::salvo_tls::TlsSalvoAcceptor::new(acceptor, tls);
-                return Ok(run(acceptor, svc, close, closed, addr, grace));
+                return Ok(run(
+                    acceptor,
+                    svc,
+                    (close, closed),
+                    (addr, grace),
+                    header_timeout,
+                ));
             }
             // Off by default: guard each connection so the HTTP/2 preface ends it (`preface_guard.rs`); `h2c(true)` serves salvo's own acceptor.
             if !opts.h2c {
                 let acceptor = crate::preface_guard::salvo_acceptor::GuardedSalvoAcceptor(acceptor);
-                return Ok(run(acceptor, svc, close, closed, addr, grace));
+                return Ok(run(
+                    acceptor,
+                    svc,
+                    (close, closed),
+                    (addr, grace),
+                    header_timeout,
+                ));
             }
-            Ok(run(acceptor, svc, close, closed, addr, grace))
+            Ok(run(
+                acceptor,
+                svc,
+                (close, closed),
+                (addr, grace),
+                header_timeout,
+            ))
         })
     }
 }
@@ -98,10 +119,9 @@ impl ServerAdapter for SalvoAdapter {
 fn run<A>(
     acceptor: A,
     svc: BoxService,
-    close: Arc<Notify>,
-    closed: Arc<Notify>,
-    addr: std::net::SocketAddr,
-    grace: crate::Grace,
+    (close, closed): (Arc<Notify>, Arc<Notify>),
+    (addr, grace): (std::net::SocketAddr, crate::Grace),
+    header_timeout: Duration,
 ) -> RunningServer
 where
     A: Acceptor + Send + 'static,
@@ -112,7 +132,10 @@ where
         in_flight: Arc::clone(&in_flight),
     };
     let router = Router::with_path("{**rest}").goal(goal);
-    let server = Server::new(acceptor);
+    // salvo's own default is 30 s for the head and 10 s for a TLS handshake; the head's is HTTPAnt's setting here, zero meaning none.
+    let mut fuse = salvo_core::fuse::FuseConfig::default();
+    fuse.http1_header_timeout = (!header_timeout.is_zero()).then_some(header_timeout);
+    let server = Server::new(acceptor).fuse_config(fuse);
     let handle = server.handle();
     let (stop, stopped) = oneshot::channel::<()>();
     // salvo runs as a task of its own: it has to keep being polled while shutdown waits for the listener to close.

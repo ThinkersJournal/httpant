@@ -50,6 +50,8 @@ impl ServerAdapter for WarpAdapter {
             // HTTPAnt cannot reach warp's accept loop (its `Accept` is private), so `Limits::max_connections` is not enforced: said in
             // the capability documents, and conformance case 22 holds the declaration.
             c.connection_limit = Support::No;
+            // The library gives HTTPAnt no way to set a head read timeout, so it keeps its own default (measured in `docs/LIMITS-BY-ADAPTER.md`); case 23 holds this.
+            c.header_read_timeout = Support::No;
             Support::No
         } else {
             Support::Yes

@@ -56,6 +56,8 @@ impl ServerAdapter for ActixAdapter {
         c.h2c_refusable = Support::Yes;
         // `Limits::max_connections`: the accept loop takes a slot before it accepts (`connections.rs`); conformance case 22.
         c.connection_limit = Support::Yes;
+        // `Limits::header_read_timeout` is set on the library's own head timer; conformance case 23.
+        c.header_read_timeout = Support::Yes;
         c
     }
 
@@ -65,9 +67,18 @@ impl ServerAdapter for ActixAdapter {
             let svc = opts.wrap(svc);
             let gate = opts.connection_gate()?;
             let max_connections = opts.limits.max_connections;
+            let header_timeout = opts.limits.header_read_timeout;
             #[cfg(feature = "tls")]
             if let Some(tls) = opts.tls.clone() {
-                return crate::actix_tls::serve(svc, opts.listener, tls, grace, gate).await;
+                return crate::actix_tls::serve(
+                    svc,
+                    opts.listener,
+                    tls,
+                    grace,
+                    gate,
+                    header_timeout,
+                )
+                .await;
             }
             let addr = opts.listener.local_addr()?;
             let listener = opts.listener;
@@ -86,6 +97,8 @@ impl ServerAdapter for ActixAdapter {
                             ))
                         })
                         .workers(2)
+                        // The time a client has to send a request head; actix's own default is 5 s, here the same setting as everywhere. Zero is none.
+                        .client_request_timeout(header_timeout)
                         // actix counts connections per worker and pauses accepting at its limit, as the gate does; two workers share the total.
                         .max_connections(if max_connections == 0 {
                             usize::MAX

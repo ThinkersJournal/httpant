@@ -49,6 +49,8 @@ impl ServerAdapter for HyperAdapter {
         c.h2c_refusable = Support::Yes;
         // `Limits::max_connections`: the accept loop takes a slot before it accepts (`connections.rs`); conformance case 22.
         c.connection_limit = Support::Yes;
+        // `Limits::header_read_timeout` is set on the library's own head timer; conformance case 23.
+        c.header_read_timeout = Support::Yes;
         c
     }
 
@@ -66,6 +68,7 @@ impl ServerAdapter for HyperAdapter {
             #[cfg(all(feature = "tls", feature = "http2"))]
             let tls = tls.map(|t| t.alpn_protocols(&[b"h2", b"http/1.1"]));
             let h2c = opts.h2c;
+            let header_timeout = opts.limits.header_read_timeout;
             let (stop, mut stopped) = oneshot::channel::<()>();
             let task = tokio::spawn(async move {
                 let (drain, draining) = watch::channel(false);
@@ -94,9 +97,25 @@ impl ServerAdapter for HyperAdapter {
                                 if let Some(acceptor) = tls {
                                     // A failed handshake (unknown name, bad client, timeout) ends only this connection.
                                     let Ok(stream) = acceptor.accept(stream).await else { return };
-                                    return serve_conn(stream, peer, svc, draining, true, false).await;
+                                    return serve_conn(
+                                        stream,
+                                        peer,
+                                        svc,
+                                        draining,
+                                        (true, false),
+                                        header_timeout,
+                                    )
+                                    .await;
                                 }
-                                serve_conn(stream, peer, svc, draining, false, h2c).await;
+                                serve_conn(
+                                    stream,
+                                    peer,
+                                    svc,
+                                    draining,
+                                    (false, h2c),
+                                    header_timeout,
+                                )
+                                .await;
                             });
                         }
                         Some(_) = conns.join_next(), if !conns.is_empty() => {}
@@ -118,8 +137,8 @@ async fn serve_conn<I>(
     peer: std::net::SocketAddr,
     svc: BoxService,
     mut draining: watch::Receiver<bool>,
-    over_tls: bool,
-    h2c: bool,
+    (over_tls, h2c): (bool, bool),
+    header_timeout: std::time::Duration,
 ) where
     I: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
@@ -135,7 +154,16 @@ async fn serve_conn<I>(
     });
     // A connection that errors (peer reset, malformed request) ends only that connection.
     #[cfg(not(feature = "http2"))]
-    let conn = http1::Builder::new().serve_connection(TokioIo::new(io), service);
+    let conn = {
+        let mut builder = http1::Builder::new();
+        if !header_timeout.is_zero() {
+            // The head must arrive within the time, counted from when the connection starts waiting for one.
+            builder
+                .timer(hyper_util::rt::TokioTimer::new())
+                .header_read_timeout(header_timeout);
+        }
+        builder.serve_connection(TokioIo::new(io), service)
+    };
     // HTTP/2 where TLS negotiated it; a cleartext listener is HTTP/1.1 (no h2c by prior knowledge) unless `h2c(true)` was asked for.
     #[cfg(not(feature = "http2"))]
     let _ = h2c;
@@ -149,6 +177,15 @@ async fn serve_conn<I>(
             builder.http1_only()
         }
     };
+    #[cfg(feature = "http2")]
+    let mut builder = builder;
+    #[cfg(feature = "http2")]
+    if !header_timeout.is_zero() {
+        builder
+            .http1()
+            .timer(hyper_util::rt::TokioTimer::new())
+            .header_read_timeout(header_timeout);
+    }
     #[cfg(feature = "http2")]
     let conn = builder.serve_connection(TokioIo::new(io), service);
     tokio::pin!(conn);

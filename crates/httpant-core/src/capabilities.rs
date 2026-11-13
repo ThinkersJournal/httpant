@@ -40,6 +40,9 @@ pub struct Capabilities {
     /// reach the library's accept loop (warp) and the number of connections is whatever the operating system and the library allow:
     /// said in the capability documents, not hidden.
     pub connection_limit: Support,
+    /// Enforces `Limits::header_read_timeout` (a client that does not finish its request head in time is cut off). `No` means the library gives
+    /// HTTPAnt no way to set one (axum, poem, warp) and what it does by default is what a client gets: said in the capability documents.
+    pub header_read_timeout: Support,
     /// The body limit the adapter applies unless told otherwise, in bytes.
     pub default_body_limit: usize,
 }
@@ -56,6 +59,7 @@ impl Default for Capabilities {
             h2c: Support::Unknown,
             h2c_refusable: Support::Unknown,
             connection_limit: Support::Unknown,
+            header_read_timeout: Support::Unknown,
             default_body_limit: DEFAULT_BODY_LIMIT,
         }
     }

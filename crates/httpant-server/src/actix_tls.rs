@@ -92,6 +92,7 @@ pub(crate) async fn serve(
     tls: TlsAcceptor,
     grace: Grace,
     gate: crate::ConnectionGate,
+    header_timeout: std::time::Duration,
 ) -> Result<RunningServer> {
     listener.set_nonblocking(true)?;
     let addr = listener.local_addr()?;
@@ -136,8 +137,9 @@ pub(crate) async fn serve(
                         },
                     ))
                 };
-                let http =
-                    HttpService::build().finish(map_config(app(), |_: ()| AppConfig::default()));
+                let http = HttpService::build()
+                    .client_request_timeout(header_timeout)
+                    .finish(map_config(app(), |_: ()| AppConfig::default()));
                 let handler = match <HttpService<Io, _, _, _, _> as ServiceFactory<(
                     Io,
                     Protocol,
