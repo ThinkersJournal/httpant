@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.17] - 2026-11-13
+
+ROADMAP rows 16 (body bounds on every adapter) and 17 (connection, header-read and body-read limits) are marked done with the PRs that closed them; no code changed.
+
 ## [0.7.16] - 2026-11-13
 
 - **New limit (ROADMAP row 17, third slice; httpant#73):** `Limits::header_read_timeout` (default **30 s**, `Duration::ZERO` = off, off in `Limits::unlimited()`): a client that starts a request head and does not finish it in that time is cut off. Set on each library's own head timer, because HTTPAnt cannot see a head before the library has parsed it: hyper's `header_read_timeout` (with a tokio timer, which the adapter did not have), actix-web's `client_request_timeout` (plain and TLS listeners), salvo's `FuseConfig::http1_header_timeout`. **Not enforced on axum, poem and warp:** they give HTTPAnt no way to set one (axum and warp run hyper-util's builder with no hook; poem has only an activity-based `idle_timeout`, which would also end a quiet long-poll), so they keep their own default, which is none (measured); declared `header_read_timeout: No` (new `Capabilities::header_read_timeout`) and held by the case.
