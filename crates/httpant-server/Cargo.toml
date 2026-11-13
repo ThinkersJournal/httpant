@@ -21,6 +21,9 @@ http2 = ["hyper/http2", "hyper-util/http2", "hyper-util/server-auto", "salvo_cor
 tls = ["dep:rustls", "dep:tokio-rustls", "dep:x509-parser"]
 poem = ["dep:poem", "dep:futures-util", "dep:http-body-util"]
 
+[target.'cfg(unix)'.dependencies]
+rlimit.workspace = true
+
 [dependencies]
 httpant-core.workspace = true
 hyper = { workspace = true, features = ["server", "http1"] }

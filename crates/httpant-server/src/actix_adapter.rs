@@ -54,6 +54,8 @@ impl ServerAdapter for ActixAdapter {
         // No HTTP/2, so no h2c either: it always refuses the preface, and `h2c(true)` is a named error at start (conformance case 19).
         c.h2c = Support::No;
         c.h2c_refusable = Support::Yes;
+        // `Limits::max_connections`: the accept loop takes a slot before it accepts (`connections.rs`); conformance case 22.
+        c.connection_limit = Support::Yes;
         c
     }
 
@@ -61,9 +63,11 @@ impl ServerAdapter for ActixAdapter {
         Box::pin(async move {
             let grace = opts.grace();
             let svc = opts.wrap(svc);
+            let gate = opts.connection_gate()?;
+            let max_connections = opts.limits.max_connections;
             #[cfg(feature = "tls")]
             if let Some(tls) = opts.tls.clone() {
-                return crate::actix_tls::serve(svc, opts.listener, tls, grace).await;
+                return crate::actix_tls::serve(svc, opts.listener, tls, grace, gate).await;
             }
             let addr = opts.listener.local_addr()?;
             let listener = opts.listener;
@@ -82,6 +86,12 @@ impl ServerAdapter for ActixAdapter {
                             ))
                         })
                         .workers(2)
+                        // actix counts connections per worker and pauses accepting at its limit, as the gate does; two workers share the total.
+                        .max_connections(if max_connections == 0 {
+                            usize::MAX
+                        } else {
+                            max_connections.div_ceil(2)
+                        })
                         // actix-web lingers 5 s by default after it has answered a request whose body was not read to its end, reading
                         // and discarding what the client keeps sending, with no limit on the bytes (measured: all of a 256 MiB chunked
                         // flood at a 256 KiB drain cap, httpant#72). Zero ends the connection after the answer, as the other adapters

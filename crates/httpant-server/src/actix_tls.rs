@@ -51,7 +51,10 @@ impl Drop for InFlightGuard {
 }
 
 /// A finished TLS stream, as actix-http reads and writes it.
-struct Io(TlsStream<TcpStream>);
+struct Io(
+    TlsStream<TcpStream>,
+    #[allow(dead_code)] crate::ConnectionPermit,
+);
 
 impl AsyncRead for Io {
     fn poll_read(
@@ -88,6 +91,7 @@ pub(crate) async fn serve(
     listener: std::net::TcpListener,
     tls: TlsAcceptor,
     grace: Grace,
+    gate: crate::ConnectionGate,
 ) -> Result<RunningServer> {
     listener.set_nonblocking(true)?;
     let addr = listener.local_addr()?;
@@ -95,6 +99,8 @@ pub(crate) async fn serve(
     let (ready_tx, mut ready_rx) = mpsc::channel::<Ready>(128);
     let accepting = tokio::spawn(async move {
         loop {
+            // A slot first, then the accept: at the connection limit nothing is accepted and clients wait in the OS queue.
+            let permit = gate.admit().await;
             let Ok((stream, peer)) = tcp.accept().await else {
                 // Out of descriptors or a reset on accept: back off briefly rather than spin.
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -104,7 +110,9 @@ pub(crate) async fn serve(
             tokio::spawn(async move {
                 if let Ok(stream) = tls.accept(stream).await {
                     // `h2` is never offered on this listener (see `ActixAdapter::capabilities`), so every connection is HTTP/1.1.
-                    let _ = ready_tx.send((Io(stream), Protocol::Http1, peer)).await;
+                    let _ = ready_tx
+                        .send((Io(stream, permit), Protocol::Http1, peer))
+                        .await;
                 }
             });
         }

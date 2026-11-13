@@ -770,7 +770,7 @@ dependencies = [
 
 [[package]]
 name = "httpant"
-version = "0.7.14"
+version = "0.7.15"
 dependencies = [
  "httpant-client",
  "httpant-core",
@@ -780,7 +780,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-bench"
-version = "0.7.14"
+version = "0.7.15"
 dependencies = [
  "actix-web",
  "axum",
@@ -799,7 +799,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-client"
-version = "0.7.14"
+version = "0.7.15"
 dependencies = [
  "bytes",
  "http-body",
@@ -816,7 +816,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-conformance"
-version = "0.7.14"
+version = "0.7.15"
 dependencies = [
  "bytes",
  "futures-util",
@@ -837,7 +837,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-core"
-version = "0.7.14"
+version = "0.7.15"
 dependencies = [
  "bytes",
  "futures-util",
@@ -853,7 +853,7 @@ dependencies = [
 
 [[package]]
 name = "httpant-server"
-version = "0.7.14"
+version = "0.7.15"
 dependencies = [
  "actix-http",
  "actix-service",
@@ -869,6 +869,7 @@ dependencies = [
  "hyper-util",
  "poem",
  "rcgen",
+ "rlimit",
  "rustls",
  "salvo_core",
  "serde",
@@ -1553,6 +1554,15 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "rlimit"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f35ee2729c56bb610f6dba436bf78135f728b7373bdffae2ec815b2d3eb98cc3"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

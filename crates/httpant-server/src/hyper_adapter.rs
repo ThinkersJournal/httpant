@@ -47,6 +47,8 @@ impl ServerAdapter for HyperAdapter {
             Support::No
         };
         c.h2c_refusable = Support::Yes;
+        // `Limits::max_connections`: the accept loop takes a slot before it accepts (`connections.rs`); conformance case 22.
+        c.connection_limit = Support::Yes;
         c
     }
 
@@ -54,6 +56,7 @@ impl ServerAdapter for HyperAdapter {
         Box::pin(async move {
             let grace = opts.grace();
             let svc = opts.wrap(svc);
+            let gate = opts.connection_gate()?;
             opts.listener.set_nonblocking(true)?;
             let addr = opts.listener.local_addr()?;
             let listener = TcpListener::from_std(opts.listener)?;
@@ -67,9 +70,17 @@ impl ServerAdapter for HyperAdapter {
             let task = tokio::spawn(async move {
                 let (drain, draining) = watch::channel(false);
                 let mut conns = JoinSet::new();
-                loop {
+                'accept: loop {
+                    // A slot first, then the accept: at the connection limit nothing is accepted and clients wait in the OS queue.
+                    let permit = loop {
+                        tokio::select! {
+                            _ = &mut stopped => break 'accept,
+                            permit = gate.admit() => break permit,
+                            Some(_) = conns.join_next(), if !conns.is_empty() => {}
+                        }
+                    };
                     tokio::select! {
-                        _ = &mut stopped => break,
+                        _ = &mut stopped => break 'accept,
                         accepted = listener.accept() => {
                             let Ok((stream, peer)) = accepted else { continue };
                             let svc = svc.clone();
@@ -77,6 +88,8 @@ impl ServerAdapter for HyperAdapter {
                             #[cfg(feature = "tls")]
                             let tls = tls.clone();
                             conns.spawn(async move {
+                                // Held until the connection ends, handshake included.
+                                let _permit = permit;
                                 #[cfg(feature = "tls")]
                                 if let Some(acceptor) = tls {
                                     // A failed handshake (unknown name, bad client, timeout) ends only this connection.

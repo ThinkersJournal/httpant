@@ -47,6 +47,9 @@ impl ServerAdapter for WarpAdapter {
             Support::No
         };
         c.h2c_refusable = if cfg!(feature = "http2") {
+            // HTTPAnt cannot reach warp's accept loop (its `Accept` is private), so `Limits::max_connections` is not enforced: said in
+            // the capability documents, and conformance case 22 holds the declaration.
+            c.connection_limit = Support::No;
             Support::No
         } else {
             Support::Yes

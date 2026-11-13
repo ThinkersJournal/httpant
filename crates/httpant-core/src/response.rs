@@ -168,6 +168,11 @@ mod tests {
                 available: vec!["hyper"],
             },
             Error::H2cNotSupported { adapter: "x" },
+            Error::ConnectionLimitTooHigh {
+                wanted: 1,
+                needed: 2,
+                available: 1,
+            },
         ];
         for e in all {
             assert!(
