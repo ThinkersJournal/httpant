@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.12] - 2026-11-12
+
+- **Docs only:** ROADMAP row 16 (actix-web reads an unread request body whole; wire `Limits::max_body_bytes` into its payload configuration, httpant#72) and row 17 (connection limit and header and body read timeouts as `Limits`, httpant#73), both `next` (PM TASK 2026-11-12). Not published.
+
 ## [0.7.11] - 2026-11-12
 
 - **CI only, no library change:** the advisory `portfolio` job now calls `ciresnave/coderipper/.github/workflows/portfolio.yml@33cc3b7e` (coderipper 0.43.49, coderipper#307), replacing `4bcf55e4` (PM TASK 2026-11-12). Not published.
