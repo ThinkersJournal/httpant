@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.13] - 2026-11-13
+
+- **Fix, actix-web adapter (httpant#72, ROADMAP row 16):** after it had answered a request whose body was not read to its end, actix-web lingered for its `client_disconnect_timeout` (its default is 5 s) reading and discarding whatever the client kept sending, **with no limit on the bytes**: measured, a 256 MiB flood (chunked and declared) at a 256 KiB drain cap was read whole on a quiet machine, with the drain on or off (the linger is a time bound, so how much it reads depends on how fast the client sends). The HTTP/1.1 listener now sets `client_disconnect_timeout(0)`, so the connection ends after the answer as on the other adapters. The TLS listener builds its `HttpService` directly and its default is already zero, so it never lingered. Nothing from actix's own payload configuration is wired (`PayloadConfig` and the server-level limits act on actix's extractors, which this adapter does not use): `Limits::max_body_bytes` and the drain cap are HTTPAnt's own wrappers, which the six adapters share.
+- **Consequence, stated:** on actix-web too, a body larger than the drain cap is cut off at the cap with `Connection: close`, and a client still sending may not see the answer (the rule on every adapter); what actix's linger used to give by luck, a longer window for the answer to arrive, is gone. Bodies within the cap are drained by HTTPAnt first, so their answers arrive.
+- Tested: `tests/drain_bounds.rs` `a_flooded_body_is_not_read_past_the_cap` now floods all six adapters twice (a chunked body a handler refuses, a declared 256 MiB the body limit refuses with `413`) and no longer skips actix-web; with the setting removed the declared flood fails on actix-web every time (3 of 3), and the chunked one only when the machine is quiet, which is why it is a time-dependent control and the fixed code is not.
+
 ## [0.7.12] - 2026-11-12
 
 - **Docs only:** ROADMAP row 16 (actix-web reads an unread request body whole; wire `Limits::max_body_bytes` into its payload configuration, httpant#72) and row 17 (connection limit and header and body read timeouts as `Limits`, httpant#73), both `next` (PM TASK 2026-11-12). Not published.
