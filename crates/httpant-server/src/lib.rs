@@ -14,6 +14,7 @@ mod drain;
 mod edge;
 mod grace;
 mod hyper_adapter;
+mod idle;
 mod limits;
 #[cfg(feature = "poem")]
 mod poem_adapter;

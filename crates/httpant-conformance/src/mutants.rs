@@ -76,18 +76,26 @@ pub enum Mutant {
     /// The default limits, except that an unread request body is not drained before an answer is sent, so the connection is closed with
     /// that body unread (a TCP reset on some stacks, which discards the answer).
     NoDrain,
+    /// The default limits, except that a request body that stalls is waited for for ever.
+    NoBodyReadTimeout,
 }
 
 impl Mutant {
     /// The limits the subject serves a mutant with: the defaults, minus the one the mutant is about.
     pub fn limits(self) -> httpant_server::Limits {
-        let mut l = httpant_server::Limits::default();
+        self.limits_over(httpant_server::Limits::default())
+    }
+
+    /// `base` (the limits a case chose), minus the one the mutant is about.
+    pub fn limits_over(self, base: httpant_server::Limits) -> httpant_server::Limits {
+        let mut l = base;
         match self {
             Mutant::NoUriLimit => l.max_uri_len = None,
             Mutant::NoHeaderCountLimit => l.max_headers = None,
             Mutant::NoHeaderBytesLimit => l.max_header_bytes = None,
             Mutant::NoBodyLimit => l.max_body_bytes = None,
             Mutant::NoDrain => l.max_drain_bytes = 0,
+            Mutant::NoBodyReadTimeout => l.body_read_timeout = std::time::Duration::ZERO,
             _ => {}
         }
         l
@@ -126,6 +134,7 @@ impl Mutant {
             Mutant::IgnoreConnectionClose => "ignore-connection-close",
             Mutant::SkipExpectContinue => "skip-expect-continue",
             Mutant::NoDrain => "no-drain",
+            Mutant::NoBodyReadTimeout => "no-body-read-timeout",
         }
     }
 }
@@ -146,6 +155,7 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         | Mutant::NoHeaderBytesLimit
         | Mutant::NoBodyLimit
         | Mutant::NoDrain
+        | Mutant::NoBodyReadTimeout
         | Mutant::ServeTlsInClear
         | Mutant::OffersH2WithoutServingIt
         | Mutant::H2cOnByDefault

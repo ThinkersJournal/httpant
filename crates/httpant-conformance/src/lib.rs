@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt adapter conformance suite (design `docs/HTTPANT-DESIGN.md`, section 6).
 //!
-//! - [`CASES`]: twenty cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
+//! - [`CASES`]: twenty-one cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
 //!   minimal HTTP/1.1 client. The client is deliberately not HTTPAnt, hyper or any adapter, so a defect cannot hide on both ends of a test.
 //! - Every case lists the known-bad [`Mutant`]s it must fail on. [`check_case`] demands both halves: the reference passes **and** every mutant
 //!   fails. A case that passes on its mutant is itself a failing test.
@@ -59,7 +59,7 @@ impl std::fmt::Debug for Case {
 }
 
 /// The sixteen cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
-pub const CASES: [Case; 20] = [
+pub const CASES: [Case; 21] = [
     Case {
         number: 1,
         id: "method-fidelity",
@@ -213,6 +213,13 @@ pub const CASES: [Case; 20] = [
         mutants: &[Mutant::NoDrain],
         run: cases::refusal_delivered,
     },
+    Case {
+        number: 21,
+        id: "body-read-timeout",
+        requirement: "a request body that stops arriving does not hold a handler for ever: after the body read timeout the read fails and the client is answered 408 (on every adapter, it is HTTPAnt's own limit); a body that keeps arriving, each piece inside the timeout, is read to its end however long that takes",
+        mutants: &[Mutant::NoBodyReadTimeout],
+        run: cases::body_read_timeout,
+    },
 ];
 
 /// Run every case against `subject`: `(case number, result)` for each.
@@ -281,6 +288,7 @@ mod tests {
             Mutant::H2cOnByDefault,
             Mutant::IgnoresH2cRequest,
             Mutant::NoDrain,
+            Mutant::NoBodyReadTimeout,
             Mutant::ClampStatus,
             Mutant::NoMiddleware,
             Mutant::HashMapHeaders,
@@ -354,6 +362,16 @@ mod tests {
         );
     }
 
+    /// The no-timeout mutant must fail case 21 because the stalled body was waited for, not for an unrelated reason.
+    #[tokio::test]
+    async fn the_case_21_mutant_fails_because_the_stalled_body_was_waited_for() {
+        let e = CASES[20]
+            .run(&MutantSubject(Mutant::NoBodyReadTimeout))
+            .await
+            .unwrap_err();
+        assert!(e.contains("was waited for past 5 s"), "{e}");
+    }
+
     case_test!(case_11_concurrency, 10);
     case_test!(case_12_head, 11);
     case_test!(case_13_path_encoding, 12);
@@ -364,6 +382,7 @@ mod tests {
     case_test!(case_18_http2_alpn, 17);
     case_test!(case_19_h2c_switch, 18);
     case_test!(case_20_refusal_delivered, 19);
+    case_test!(case_21_body_read_timeout, 20);
 
     #[test]
     fn client_cases_are_numbered_in_order_and_each_mutant_is_used_once() {

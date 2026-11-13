@@ -26,6 +26,7 @@ use tower::ServiceExt;
 /// | number of header fields | `431` | 64 |
 /// | total size of header names and values | `431` | 16 KiB |
 /// | request body, declared or streamed | `413` | 2 MiB |
+/// | request body stalled (no data for this long, while a handler waits for it) | `408` | 60 s |
 ///
 /// A body over its limit is refused at once when its `Content-Length` says so; a body that grows past it while streaming (chunked, or a lying
 /// `Content-Length`) fails the read with [`httpant_core::Error::BodyTooLarge`], which the handler's error mapping answers with `413`.
@@ -56,7 +57,14 @@ pub struct Limits {
     pub max_drain_bytes: u64,
     /// Longest the draining may take.
     pub drain_timeout: Duration,
+    /// Longest a request body may go without any data arriving, while a handler (or the drain) waits for it, before the read fails with
+    /// [`httpant_core::Error::BodyTimeout`] (`408`). An idle time, as nginx's `client_body_timeout` is, not a total: a long upload that keeps
+    /// moving is never cut. `Duration::ZERO` switches it off ([`Limits::unlimited`] does).
+    pub body_read_timeout: Duration,
 }
+
+/// The default for [`Limits::body_read_timeout`].
+pub const DEFAULT_BODY_READ_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// The default for [`Limits::max_drain_bytes`]: above the default body limit, so a refused body of the size the server would have accepted
 /// is drained whole.
@@ -74,6 +82,7 @@ impl Default for Limits {
             max_body_bytes: Some(DEFAULT_BODY_LIMIT as u64),
             max_drain_bytes: DEFAULT_MAX_DRAIN_BYTES,
             drain_timeout: DEFAULT_DRAIN_TIMEOUT,
+            body_read_timeout: DEFAULT_BODY_READ_TIMEOUT,
         }
     }
 }
@@ -88,6 +97,7 @@ impl Limits {
             max_body_bytes: None,
             max_drain_bytes: DEFAULT_MAX_DRAIN_BYTES,
             drain_timeout: DEFAULT_DRAIN_TIMEOUT,
+            body_read_timeout: Duration::ZERO,
         }
     }
 
@@ -124,6 +134,12 @@ impl Limits {
     /// Longest the draining of an unread request body may take, see [`Limits`].
     pub fn drain_timeout(mut self, timeout: Duration) -> Self {
         self.drain_timeout = timeout;
+        self
+    }
+
+    /// Longest a request body may go without data before the read fails with `408` (`Duration::ZERO`: never), see [`Limits`].
+    pub fn body_read_timeout(mut self, idle: Duration) -> Self {
+        self.body_read_timeout = idle;
         self
     }
 
@@ -432,5 +448,7 @@ mod tests {
         assert_eq!(d.max_body_bytes, Some(2 * 1024 * 1024));
         assert_eq!(d.max_drain_bytes, 8 * 1024 * 1024);
         assert_eq!(d.drain_timeout, Duration::from_secs(5));
+        assert_eq!(d.body_read_timeout, Duration::from_secs(60));
+        assert_eq!(Limits::unlimited().body_read_timeout, Duration::ZERO);
     }
 }
