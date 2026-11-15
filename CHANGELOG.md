@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.19] - 2026-11-15
+
+Cargo.lock moves warp 0.4.3 to 0.4.4 (SSE line-ending fix, absent path_and_query normalised) and actix-http 3.20.4 to 3.21.0. No source change; actix-http still pulls h2 0.3 only behind its off `http2` feature, so ROADMAP row 15 is unchanged. Clippy, the workspace tests and cargo deny pass.
+
 ## [0.7.18] - 2026-11-14
 
 ROADMAP row 12 now holds the first captured failure of `the_whole_suite_passes_on_every_adapter` (1 in 40 under CPU load at 325d578: case 11 on hyper, 1,000 requests not answered within 8 s) and what to do if it recurs; no code changed.
