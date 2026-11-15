@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.18] - 2026-11-14
+
+ROADMAP row 12 now holds the first captured failure of `the_whole_suite_passes_on_every_adapter` (1 in 40 under CPU load at 325d578: case 11 on hyper, 1,000 requests not answered within 8 s) and what to do if it recurs; no code changed.
+
 ## [0.7.17] - 2026-11-13
 
 ROADMAP rows 16 (body bounds on every adapter) and 17 (connection, header-read and body-read limits) are marked done with the PRs that closed them; no code changed.
