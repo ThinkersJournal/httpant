@@ -8,7 +8,8 @@ State at 2026-11-13, main `e3136df` (0.7.15 stamped by the PM). Current state on
 - Recopy `C:\Projects\tools\fragment-stamp-kit\check-fragment.py` (rejects an empty fragment) in the next kit-touching PR; no hurry.
 
 ## WAIT
-- WAIT cron `c66f0d43`: on Nov 15 check `actix-http` (3.21.0 changes the h2 WAIT, row 15) and warp for a accept-loop/timeout hook (declared No for connection limit; axum/poem/warp No for header timeout).
+- WAIT: `bash tools/crate-newer.sh actix-http 3.21.0` (exit 0 = new version): 3.21.0 (read 2026-11-15) still depends on `h2` ^0.3.27, so row 15 stays off; act when a version moves `h2` to >= 0.4.16 (`cargo tree -i h2`).
+- WAIT: `bash tools/crate-newer.sh warp 0.4.4` (exit 0 = new version): 0.4.4 (2026-11-13) only fixes SSE line endings and `path_and_query`; act if a release adds an accept-loop or head-timeout hook (connection limit and header timeout are declared No on warp).
 
 ## Rules that bit
 - One `changelog.d` fragment per PR, no version edit, do not merge main in after the PM stamps; rebuild from a fresh branch off origin/main after a squash-merge (cherry-pick only its own commit; read conflicts, never `git add` a file with markers).
