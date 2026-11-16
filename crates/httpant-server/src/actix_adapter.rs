@@ -97,7 +97,7 @@ impl ServerAdapter for ActixAdapter {
                             let svc = svc.clone();
                             App::new().default_service(web::to(
                                 move |req: HttpRequest, payload: web::Payload| {
-                                    handle(svc.clone(), req, payload, None)
+                                    handle(svc.clone(), req, payload, None::<()>)
                                 },
                             ))
                         })
@@ -148,16 +148,11 @@ impl ServerAdapter for ActixAdapter {
 }
 
 /// `guard` (TLS serving only) is held until the response body has been written, so shutdown can wait for exactly the requests in flight.
-#[cfg(feature = "tls")]
-type Guard = Option<crate::actix_tls::InFlightGuard>;
-#[cfg(not(feature = "tls"))]
-type Guard = Option<()>;
-
-pub(crate) async fn handle(
+pub(crate) async fn handle<G: 'static>(
     svc: BoxService,
     req: HttpRequest,
     payload: web::Payload,
-    guard: Guard,
+    guard: Option<G>,
 ) -> HttpResponse {
     let Ok(mut request) = to_request(&req, payload) else {
         return HttpResponse::BadRequest().finish();

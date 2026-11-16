@@ -9,7 +9,7 @@ use httpant_core::{Body, BoxFuture, BoxService, Request, Response, Result};
 use httpant_server::RunningServer;
 use tower::ServiceExt;
 
-use crate::app::BODY_LIMIT;
+use crate::consts::BODY_LIMIT;
 
 /// One way of being wrong.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

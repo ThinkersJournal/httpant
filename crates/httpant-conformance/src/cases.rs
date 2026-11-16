@@ -3,7 +3,8 @@
 
 use httpant_core::BoxFuture;
 
-use crate::app::{self, BODY_LIMIT, binary_body};
+use crate::app::{self, binary_body};
+use crate::consts::BODY_LIMIT;
 use crate::raw::{RawRequest, RawResponse, send};
 use crate::subject::Subject;
 

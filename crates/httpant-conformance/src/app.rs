@@ -15,10 +15,8 @@ use httpant_core::{
 use tokio::sync::Notify;
 use tower::ServiceExt;
 
+use crate::consts::BODY_LIMIT;
 use crate::subject::App;
-
-/// The body limit the `/echo` route reads with (1 MiB).
-pub const BODY_LIMIT: usize = 1024 * 1024;
 
 /// The bytes `/bin` serves: every byte value, four times.
 pub fn binary_body() -> Vec<u8> {
