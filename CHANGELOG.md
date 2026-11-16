@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.23] - 2026-11-16
+
+The case-11 deadline in `httpant-conformance` `live.rs` goes from 8 s to 15 s (the serialising mutant still needs 20 s) and a timeout now says how many of the 1,000 requests were unanswered and the first ten; row 12 captured the 8 s deadline failing twice on hyper under load. README says 23 server and 9 client cases (was 18). Verified: fmt, clippy -D warnings, the conformance tests.
+
 ## [0.7.22] - 2026-11-16
 
 `--features actix-web` without `tls` failed `clippy -D warnings` (unused `gate`) because the workspace build always enables `tls` through the conformance crate and so never built that combination. The connection-limit check still runs on both paths; CI now clippy-builds `httpant-server` with `actix-web` alone. Verified: that command fails on origin/main 00cef75 and passes here; all-features clippy and the actix tests pass.

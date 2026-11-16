@@ -281,13 +281,21 @@ pub fn concurrency(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
         let addr = server.addr();
         let permits = Arc::new(Semaphore::new(IN_FLIGHT));
         let mut tasks = Vec::with_capacity(REQUESTS);
+        // Which requests were answered, so a timeout can name the ones that were not (ROADMAP row 12).
+        let answered: Arc<Vec<std::sync::atomic::AtomicBool>> = Arc::new(
+            (0..REQUESTS)
+                .map(|_| std::sync::atomic::AtomicBool::new(false))
+                .collect(),
+        );
         for n in 0..REQUESTS {
             let permits = Arc::clone(&permits);
+            let answered = Arc::clone(&answered);
             tasks.push(tokio::spawn(async move {
                 let _slot = permits.acquire().await.map_err(|e| e.to_string())?;
                 let res = send(addr, &RawRequest::new("GET", format!("/delay/{n}")))
                     .await
                     .map_err(|e| format!("request {n}: {e}"))?;
+                answered[n].store(true, std::sync::atomic::Ordering::Relaxed);
                 if res.status != 200 || res.body != n.to_string().as_bytes() {
                     return Err(format!(
                         "request {n}: got {} `{}`",
@@ -309,9 +317,19 @@ pub fn concurrency(s: &dyn Subject) -> BoxFuture<'_, Outcome> {
             }
             failures
         };
-        let failures = tokio::time::timeout(Duration::from_secs(8), all)
+        // 15 s: well over the ~80 ms an unserialised server needs, still under the 20 s the serialising mutant needs.
+        let failures = tokio::time::timeout(Duration::from_secs(15), all)
             .await
-            .map_err(|_| format!("{REQUESTS} requests were not all answered within 8 s"))?;
+            .map_err(|_| {
+                let missing: Vec<usize> = (0..REQUESTS)
+                    .filter(|n| !answered[*n].load(std::sync::atomic::Ordering::Relaxed))
+                    .collect();
+                format!(
+                    "{REQUESTS} requests were not all answered within 15 s; {} unanswered, first {:?}",
+                    missing.len(),
+                    &missing[..missing.len().min(10)]
+                )
+            })?;
         ensure!(
             failures.is_empty(),
             "{} of {REQUESTS} requests failed; first: {}",
