@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.20] - 2026-11-16
+
+The Portfolio job calls the shared workflow at coderipper c72a6e0 (0.47.5) instead of 33cc3b7 (0.43.49). The rule-id migration tool finds nothing to rename here: `.coderipper.toml` already uses a numbered id (SEC-002). No code or version change.
+
 ## [0.7.19] - 2026-11-15
 
 Cargo.lock moves warp 0.4.3 to 0.4.4 (SSE line-ending fix, absent path_and_query normalised) and actix-http 3.20.4 to 3.21.0. No source change; actix-http still pulls h2 0.3 only behind its off `http2` feature, so ROADMAP row 15 is unchanged. Clippy, the workspace tests and cargo deny pass.
