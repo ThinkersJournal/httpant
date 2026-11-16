@@ -62,7 +62,7 @@ fn main() {
 
 ## What you get
 
-Every web library sits behind the same **conformance suite** (18 cases over real sockets, each with deliberately broken adapters it must catch),
+Every web library sits behind the same **conformance suite** (23 server cases and 9 client cases over real sockets, each with deliberately broken adapters it must catch),
 so the same program behaves the same on each. What each one does, as measured and not as claimed:
 [docs/CAPABILITY-MATRIX.md](https://github.com/ThinkersJournal/httpant/blob/main/docs/CAPABILITY-MATRIX.md).
 
