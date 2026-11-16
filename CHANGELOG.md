@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.22] - 2026-11-16
+
+`--features actix-web` without `tls` failed `clippy -D warnings` (unused `gate`) because the workspace build always enables `tls` through the conformance crate and so never built that combination. The connection-limit check still runs on both paths; CI now clippy-builds `httpant-server` with `actix-web` alone. Verified: that command fails on origin/main 00cef75 and passes here; all-features clippy and the actix tests pass.
+
+— lane: httpant
+
 ## [0.7.21] - 2026-11-16
 
 The conformance crate's `app`, `subject` and `mutants` modules no longer import each other in a ring (the shared `BODY_LIMIT` moved to a new `consts` module), and the actix adapter's `handle` is generic over the in-flight guard it holds, so `actix_adapter` no longer names `actix_tls`. Verified: fmt, clippy, tests with `tls` and without.
