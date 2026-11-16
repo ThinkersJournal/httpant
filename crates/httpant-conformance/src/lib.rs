@@ -13,6 +13,7 @@
 mod app;
 mod cases;
 mod client_suite;
+mod consts;
 mod h2_case;
 mod live;
 mod mutants;
