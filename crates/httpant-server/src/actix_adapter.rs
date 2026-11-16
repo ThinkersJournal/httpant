@@ -65,7 +65,12 @@ impl ServerAdapter for ActixAdapter {
         Box::pin(async move {
             let grace = opts.grace();
             let svc = opts.wrap(svc);
+            // The TLS listener passes through the gate itself; the plain one uses actix's own limit below, but the check that the process can hold
+            // that many connections still runs first, on both.
+            #[cfg(feature = "tls")]
             let gate = opts.connection_gate()?;
+            #[cfg(not(feature = "tls"))]
+            opts.connection_gate()?;
             let max_connections = opts.limits.max_connections;
             let header_timeout = opts.limits.header_read_timeout;
             #[cfg(feature = "tls")]

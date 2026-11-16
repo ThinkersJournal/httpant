@@ -35,6 +35,9 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --locked --all-targets -- -D warnings
 
+      - name: cargo clippy, actix-web without tls (workspace feature unification hides this build)
+        run: cargo clippy --locked -p httpant-server --features actix-web --all-targets -- -D warnings
+
       - name: cargo build
         run: cargo build --locked --all-targets
 
