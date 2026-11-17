@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.24] - 2026-11-17
+
+`Cargo.lock` takes actix-http 3.21.0 -> 3.22.0; no manifest or source change. 3.22.0 still requires `h2` ^0.3.27 (optional), so ROADMAP row 15 stays a watch. Verified: clippy -D warnings, workspace tests with all features (no failures), cargo deny.
+
 ## [0.7.23] - 2026-11-16
 
 The case-11 deadline in `httpant-conformance` `live.rs` goes from 8 s to 15 s (the serialising mutant still needs 20 s) and a timeout now says how many of the 1,000 requests were unanswered and the first ten; row 12 captured the 8 s deadline failing twice on hyper under load. README says 23 server and 9 client cases (was 18). Verified: fmt, clippy -D warnings, the conformance tests.
