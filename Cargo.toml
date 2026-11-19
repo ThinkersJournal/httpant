@@ -53,7 +53,7 @@ default-members = [".", "crates/httpant-core", "crates/httpant-server", "crates/
 version = "0.7.24"
 edition = "2024"
 # The default build (hyper only, no optional adapter). Measured on 1.89 and kept by the `msrv` job in CI; the optional adapters can need more:
-# actix-web 1.89 (now the same as the floor), salvo 1.94 and, through its dependencies, 1.95 with every feature on (cargo names the package that asks).
+# axum, actix-web, poem, warp, tls, http2 and https build on 1.89 (checked at d083e86 with `cargo +1.89 check --locked -p httpant --features <each>`); salvo needs 1.95 (mime-infer 4.1.0; cargo names the package that asks).
 rust-version = "1.89"
 authors = ["Eric Evans <ciresnave@gmail.com>"]
 license = "MIT OR Apache-2.0"
