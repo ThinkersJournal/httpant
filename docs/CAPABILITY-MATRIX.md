@@ -29,7 +29,7 @@ Client adapters, measured by the client cases against a raw-TCP peer (`client_su
 - *streaming request bodies* / *streaming response bodies* (server): conformance case 8. The first chunk crosses the connection while the other side is still
   producing (response) or sending (request); gated by handler signals, not by sleeps.
 - *graceful shutdown*: case 9. After shutdown is requested: a request in flight completes, an idle keep-alive connection is closed, new
-  connections are refused, and `shutdown()` returns only after the request completed. There is no grace period yet.
+  connections are refused, and `shutdown()` returns only after the request completed. The default grace is 30 s (`Server::shutdown_grace`, `no_shutdown_grace`); a request still running when it ends is ended.
 - *terminates TLS*: declared, and held to its declaration by case 17. For `yes` the case proves HTTPS on TLS 1.3 and 1.2 with the given
   certificate, the request reported as `https`, and a cleartext client getting no answer; for `no` it requires a named refusal to start with
   a TLS acceptor, so TLS that was asked for is never served in clear. The one `no` row was probed (`docs/TLS-ADAPTER-PROBES.md`): warp's

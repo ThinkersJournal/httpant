@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.25] - 2026-11-19
+
+The README said the `actix-web`, `salvo` and `warp` features can need a newer compiler than the default build; measured on 1.89 with `--locked`, only `salvo` does (1.95, mime-infer 4.1.0), so the sentence now says that. The `Cargo.toml` comment gave salvo as 1.94 and is corrected; `docs/CAPABILITY-MATRIX.md` no longer says there is no grace period (it is 30 s by default). New test file `crates/httpant-conformance/tests/readme_claims.rs` holds nine README claims on every adapter: every status 200 to 599, unknown methods never answered as GET, the default limits and their refusals, forwarded headers ignored unless the peer is listed, no redirect unless asked, bearer and query kept out of `Debug` and errors, the private-address guard, the proxy acknowledgement. ROADMAP rows 18 (the audit, with what was run and what was only read) and 19 (run what was only read). No code path changes.
+
 ## [0.7.24] - 2026-11-17
 
 `Cargo.lock` takes actix-http 3.21.0 -> 3.22.0; no manifest or source change. 3.22.0 still requires `h2` ^0.3.27 (optional), so ROADMAP row 15 stays a watch. Verified: clippy -D warnings, workspace tests with all features (no failures), cargo deny.

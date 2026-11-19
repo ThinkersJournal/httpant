@@ -94,7 +94,7 @@ so the same program behaves the same on each. What each one does, as measured an
 ## Status
 
 Pre-1.0: a breaking change bumps the second number (0.5 to 0.6). Minimum supported Rust version: see `rust-version` in `Cargo.toml`; the
-`actix-web`, `salvo` and `warp` features can need a newer compiler than the default build (cargo says which).
+`salvo` feature needs a newer compiler than the default build (1.95 at the current lockfile; cargo says which); the others, TLS and the https client build on the minimum.
 [CHANGELOG](https://github.com/ThinkersJournal/httpant/blob/main/CHANGELOG.md), [design](https://github.com/ThinkersJournal/httpant/blob/main/docs/HTTPANT-DESIGN.md),
 [security policy](https://github.com/ThinkersJournal/httpant/blob/main/SECURITY.md).
 
