@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.26] - 2026-11-19
+
+`readme_claims.rs` gains a test that waits out the default shutdown grace for real: a handler that never finishes holds one request on each of the six adapters (run at once, one 30 s wait); `shutdown()` returns after 29 to 40 s and the client is answered `503`. No library change. Passed on all six at `c5a8bde`.
+Also `client_revocation.rs`: a private CA issues a leaf for 127.0.0.1 and revokes it in a CRL; a rustls verifier given the CRL refuses the leaf (control; without the CRL it accepts), and the HTTPAnt client, given the CA, still connects, as the README says (`rustls does not check revocation`). No library change.
+
 ## [0.7.25] - 2026-11-19
 
 The README said the `actix-web`, `salvo` and `warp` features can need a newer compiler than the default build; measured on 1.89 with `--locked`, only `salvo` does (1.95, mime-infer 4.1.0), so the sentence now says that. The `Cargo.toml` comment gave salvo as 1.94 and is corrected; `docs/CAPABILITY-MATRIX.md` no longer says there is no grace period (it is 30 s by default). New test file `crates/httpant-conformance/tests/readme_claims.rs` holds nine README claims on every adapter: every status 200 to 599, unknown methods never answered as GET, the default limits and their refusals, forwarded headers ignored unless the peer is listed, no redirect unless asked, bearer and query kept out of `Debug` and errors, the private-address guard, the proxy acknowledgement. ROADMAP rows 18 (the audit, with what was run and what was only read) and 19 (run what was only read). No code path changes.
