@@ -377,3 +377,52 @@ fn the_unknown_adapter_message_is_the_readme_one() {
     );
     assert!(text.contains("\"hyper\""), "{text}");
 }
+
+/// "`shutdown()` waits 30 s for requests in flight, then ends them": the default, waited out for real. A handler that never finishes holds one
+/// request; `shutdown()` must neither return early nor hold past the grace period, and the client must be answered `503`. All six adapters at
+/// once, so the test costs one 30 s wait.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn shutdown_waits_the_default_thirty_seconds_then_ends_a_stuck_request_on_every_adapter() {
+    let mut runs = Vec::new();
+    for id in IDS {
+        runs.push(tokio::spawn(async move {
+            let server = Server::with_adapter(id)
+                .unwrap()
+                .get("/stuck", || async {
+                    std::future::pending::<&'static str>().await
+                })
+                .bind("127.0.0.1:0")
+                .await
+                .unwrap();
+            let url = format!("http://{}/stuck", server.addr());
+            let client = tokio::spawn(async move {
+                Client::builder()
+                    .timeout(Duration::from_secs(120))
+                    .build()
+                    .unwrap()
+                    .get(url)
+                    .send()
+                    .await
+                    .map(|r| r.status().as_u16())
+                    .map_err(|e| e.to_string())
+            });
+            // Let the request reach the handler before shutdown starts the clock.
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let started = std::time::Instant::now();
+            let _ = server.shutdown().await;
+            (id, started.elapsed(), client.await.unwrap())
+        }));
+    }
+    for run in runs {
+        let (id, took, answer) = run.await.unwrap();
+        assert!(
+            took >= Duration::from_secs(29) && took < Duration::from_secs(40),
+            "{id}: shutdown returned after {took:?}, expected about 30 s"
+        );
+        assert_eq!(
+            answer,
+            Ok(503),
+            "{id}: the stuck request was answered {answer:?}"
+        );
+    }
+}
