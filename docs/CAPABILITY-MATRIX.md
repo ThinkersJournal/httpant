@@ -10,7 +10,7 @@ rewrites it. Each adapter's `capabilities()` is compared with the measurement by
 |---|---|---|---|---|---|---|---|---|---|
 | hyper | yes | yes | yes | no | yes | yes | no | yes | 2097152 |
 | axum | yes | yes | yes | no | yes | yes | no | yes | 2097152 |
-| actix-web | yes | yes | yes | no | yes | no | no | no | 2097152 |
+| actix-web | yes | yes | yes | yes | yes | no | no | no | 2097152 |
 | poem | yes | yes | yes | no | yes | yes | no | yes | 2097152 |
 | salvo | yes | yes | yes | no | yes | yes | no | yes | 2097152 |
 | warp | yes | yes | yes | no | no | no | yes | yes | 2097152 |
@@ -52,8 +52,9 @@ Client adapters, measured by the client cases against a raw-TCP peer (`client_su
     stand between the connection and warp's hyper-util builder. Declared as `h2c_refusable: No`; the day a warp release makes the trait
     nameable, the capability flips and this row changes. Behind an edge, a program on warp therefore accepts h2c on its cleartext port.
   Without the `http2` feature no adapter serves h2c, and `h2c(true)` is the named error everywhere.
-- *non-`Send` handlers*: declared, not measured. The service contract is `Send`; actix-web (thread-per-core, `!Send` handlers) is the adapter this
-  column is for (`docs/ACTIX-ADAPTER-NOTES.md`).
+- *non-`Send` handlers*: declared, and held to its declaration by case 24 (`Server::local_route`). `yes` (actix-web only): the handler runs on the
+  worker thread that owns its state and is inside every wrapper a `Send` route is inside; `no`: a server with a local route refuses to start
+  with `LocalHandlersNotSupported`. `docs/ACTIX-ADAPTER-NOTES.md`.
 - Cases 10 (keep-alive, `Connection: close`, `Expect: 100-continue`), 11 (concurrency) and 12 (HEAD) are required of every adapter; they have no
   column because an adapter that fails them is not an adapter.
 - All three parts of case 10 are shown able to fail. Keep-alive has a service-level mutant (`force-connection-close`). `Connection: close` and

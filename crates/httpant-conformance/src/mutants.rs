@@ -82,6 +82,16 @@ pub enum Mutant {
     NoConnectionLimit,
     /// The default limits, except that a request head that never completes is waited for for ever (or for as long as the library's own default).
     NoHeaderReadTimeout,
+    /// Local routes (handlers that are not `Send`) with the request body limit off.
+    LocalNoBodyLimit,
+    /// Local routes with no trusted proxy believed.
+    LocalIgnoresProxies,
+    /// Local routes with the ACME challenge prefix left to the application.
+    LocalNoChallenge,
+    /// Local routes with the HTTPS redirect off.
+    LocalNoRedirect,
+    /// Local routes whose shutdown waits for ever.
+    LocalNoGrace,
 }
 
 impl Mutant {
@@ -102,9 +112,22 @@ impl Mutant {
             Mutant::NoBodyReadTimeout => l.body_read_timeout = std::time::Duration::ZERO,
             Mutant::NoConnectionLimit => l.max_connections = 0,
             Mutant::NoHeaderReadTimeout => l.header_read_timeout = std::time::Duration::ZERO,
+            Mutant::LocalNoBodyLimit => l.max_body_bytes = None,
             _ => {}
         }
         l
+    }
+
+    /// A mutant of case 24, served on the adapter that runs local routes instead of the reference.
+    pub fn is_local(self) -> bool {
+        matches!(
+            self,
+            Mutant::LocalNoBodyLimit
+                | Mutant::LocalIgnoresProxies
+                | Mutant::LocalNoChallenge
+                | Mutant::LocalNoRedirect
+                | Mutant::LocalNoGrace
+        )
     }
 
     /// Stable short id.
@@ -143,6 +166,11 @@ impl Mutant {
             Mutant::NoBodyReadTimeout => "no-body-read-timeout",
             Mutant::NoConnectionLimit => "no-connection-limit",
             Mutant::NoHeaderReadTimeout => "no-header-read-timeout",
+            Mutant::LocalNoBodyLimit => "local-no-body-limit",
+            Mutant::LocalIgnoresProxies => "local-ignores-proxies",
+            Mutant::LocalNoChallenge => "local-no-challenge",
+            Mutant::LocalNoRedirect => "local-no-redirect",
+            Mutant::LocalNoGrace => "local-no-grace",
         }
     }
 }
@@ -166,6 +194,11 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         | Mutant::NoBodyReadTimeout
         | Mutant::NoConnectionLimit
         | Mutant::NoHeaderReadTimeout
+        | Mutant::LocalNoBodyLimit
+        | Mutant::LocalIgnoresProxies
+        | Mutant::LocalNoChallenge
+        | Mutant::LocalNoRedirect
+        | Mutant::LocalNoGrace
         | Mutant::ServeTlsInClear
         | Mutant::OffersH2WithoutServingIt
         | Mutant::H2cOnByDefault

@@ -17,6 +17,7 @@ mod grace;
 mod hyper_adapter;
 mod idle;
 mod limits;
+mod local;
 #[cfg(feature = "poem")]
 mod poem_adapter;
 #[cfg(all(feature = "poem", feature = "tls"))]
@@ -55,6 +56,7 @@ use httpant_core::http::Method;
 use httpant_core::{BoxService, Error, Handler, LayerFn, Result, Router, apply_layers, layer_fn};
 pub use hyper_adapter::HyperAdapter;
 pub use limits::Limits;
+pub use local::LocalHandlers;
 #[cfg(feature = "poem")]
 pub use poem_adapter::PoemAdapter;
 pub use redirect::HttpsRedirect;
@@ -112,10 +114,22 @@ pub fn require_h2c(adapter: &dyn ServerAdapter) -> Result<()> {
     })
 }
 
+/// `Err(Error::LocalHandlersNotSupported)` unless `adapter` declares [`Capabilities::local_handlers`](httpant_core::Capabilities) `Yes`: a handler
+/// that is not `Send` is never given to an adapter that cannot run one (the adapters check nothing themselves).
+pub fn require_local_handlers(adapter: &dyn ServerAdapter) -> Result<()> {
+    if adapter.capabilities().local_handlers == httpant_core::Support::Yes {
+        return Ok(());
+    }
+    Err(Error::LocalHandlersNotSupported {
+        adapter: adapter.id(),
+    })
+}
+
 /// Describes routes and layers once, then runs them on an adapter chosen by id (default `hyper`).
 pub struct Server {
     adapter: Arc<dyn ServerAdapter>,
     router: Router,
+    local: LocalHandlers,
     layers: Vec<LayerFn>,
     limits: Limits,
     grace: Option<Option<Duration>>,
@@ -139,6 +153,7 @@ impl Server {
         Self {
             adapter: Arc::new(HyperAdapter),
             router: Router::new(),
+            local: LocalHandlers::new(),
             layers: Vec::new(),
             limits: Limits::default(),
             grace: None,
@@ -187,6 +202,7 @@ impl Server {
         Self {
             adapter: Arc::new(adapter),
             router: Router::new(),
+            local: LocalHandlers::new(),
             layers: Vec::new(),
             limits: Limits::default(),
             grace: None,
@@ -276,6 +292,26 @@ impl Server {
         self
     }
 
+    /// Add a route whose handler is not `Send`: `factory` runs once on every worker thread and returns an async function of the
+    /// [`Request`](httpant_core::Request) whose future may hold `Rc`, `RefCell` and the like, and whose state is the worker's own. Only an adapter
+    /// that declares [`Capabilities::local_handlers`](httpant_core::Capabilities) (actix-web) runs it; any other makes `serve`/`bind` fail with
+    /// [`Error::LocalHandlersNotSupported`], and it never runs the handler somewhere else. A local route is routed like any other (one `404`, one
+    /// `405` with `Allow`) and is inside every limit, the shutdown grace, the ACME prefix, the [`Origin`] and the HTTPS redirect.
+    pub fn local_route<H, Fut, R>(
+        mut self,
+        method: Method,
+        path: &str,
+        factory: impl Fn() -> H + Send + Sync + 'static,
+    ) -> Self
+    where
+        H: Fn(httpant_core::Request) -> Fut + 'static,
+        Fut: std::future::Future<Output = R> + 'static,
+        R: httpant_core::IntoResponse + 'static,
+    {
+        self.router = self.local.route(self.router, method, path, factory);
+        self
+    }
+
     /// `GET`.
     pub fn get<M>(self, path: &str, handler: impl Handler<M>) -> Self {
         self.route(Method::GET, path, handler)
@@ -321,7 +357,11 @@ impl Server {
         if self.h2c {
             require_h2c(&*adapter)?;
         }
+        if !self.local.is_empty() {
+            require_local_handlers(&*adapter)?;
+        }
         let opts = ServeOptions::new(listener)
+            .local_handlers(self.local.clone())
             .limits(limits)
             .trusted_proxies(proxies)
             .h2c(self.h2c);

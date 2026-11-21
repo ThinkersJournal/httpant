@@ -93,6 +93,7 @@ pub(crate) async fn serve(
     grace: Grace,
     gate: crate::ConnectionGate,
     header_timeout: std::time::Duration,
+    local: crate::LocalHandlers,
 ) -> Result<RunningServer> {
     listener.set_nonblocking(true)?;
     let addr = listener.local_addr()?;
@@ -128,6 +129,8 @@ pub(crate) async fn serve(
         .name("httpant-actix-tls".into())
         .spawn(move || {
             actix_web::rt::System::new().block_on(async move {
+                // The one thread of this listener: its instances of the local handlers.
+                local.install();
                 let app = move || {
                     let (svc, counter) = (svc.clone(), counter.clone());
                     App::new().default_service(web::to(

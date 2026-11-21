@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
+use std::sync::Arc;
 use std::time::Duration;
 
 use httpant_core::{BoxFuture, Capabilities, LayerFn, Result, Router, apply_layers};
@@ -15,6 +16,8 @@ pub struct App {
     pub router: Router,
     /// Layers in application order: the last is outermost.
     pub layers: Vec<LayerFn>,
+    /// The routes whose handlers are not `Send` (already added to `router`); empty for every case but 24.
+    pub local: httpant_server::LocalHandlers,
 }
 
 /// Something the suite can start a server on: an adapter (to be passed) or a known-bad variant of one (to be failed).
@@ -53,6 +56,10 @@ pub struct Setup {
     pub h2c: bool,
     /// The limits to serve with (case 21 shortens the body read timeout); the defaults otherwise.
     pub limits: httpant_server::Limits,
+    /// Answers the ACME challenge prefix (case 24); none by default.
+    pub challenge: Option<Arc<dyn httpant_server::ChallengeResponder>>,
+    /// Redirects cleartext requests for these hosts to HTTPS (case 24); none by default.
+    pub https_redirect: Option<httpant_server::HttpsRedirect>,
 }
 
 impl Default for Setup {
@@ -63,6 +70,8 @@ impl Default for Setup {
             tls: None,
             h2c: false,
             limits: httpant_server::Limits::default(),
+            challenge: None,
+            https_redirect: None,
         }
     }
 }
@@ -72,6 +81,14 @@ fn options(listener: std::net::TcpListener, setup: Setup) -> ServeOptions {
         .trusted_proxies(setup.trusted_proxies)
         .limits(setup.limits)
         .h2c(setup.h2c);
+    let opts = match setup.challenge {
+        Some(responder) => opts.acme_challenge(responder),
+        None => opts,
+    };
+    let opts = match setup.https_redirect {
+        Some(redirect) => opts.redirect_to_https(redirect),
+        None => opts,
+    };
     let opts = match setup.tls {
         Some(tls) => opts.tls(tls),
         None => opts,
@@ -108,8 +125,17 @@ impl<A: ServerAdapter> Subject for AdapterSubject<A> {
             if setup.h2c {
                 httpant_server::require_h2c(&self.0)?;
             }
+            // And a handler that is not `Send` is never given to an adapter that cannot run one.
+            if !app.local.is_empty() {
+                httpant_server::require_local_handlers(&self.0)?;
+            }
             let svc = apply_layers(app.router.into_service(), app.layers);
-            self.0.serve(svc, options(free_listener()?, setup)).await
+            self.0
+                .serve(
+                    svc,
+                    options(free_listener()?, setup).local_handlers(app.local),
+                )
+                .await
         })
     }
 }
@@ -156,6 +182,12 @@ impl Subject for MutantSubject {
             Mutant::ServeTlsInClear => setup.tls = None,
             // Has a server of its own, below.
             Mutant::OffersH2WithoutServingIt => {}
+            // Local routes, served as everywhere else except that one thing is off (case 24): the proxy is believed by nobody, nobody is
+            // redirected, the ACME prefix is the application's.
+            Mutant::LocalIgnoresProxies => setup.trusted_proxies = TrustedProxies::none(),
+            Mutant::LocalNoChallenge => setup.challenge = None,
+            Mutant::LocalNoRedirect => setup.https_redirect = None,
+            Mutant::LocalNoGrace => setup.grace = None,
             // Accepts the HTTP/2 preface whether or not it was asked to.
             Mutant::H2cOnByDefault => setup.h2c = true,
             // Asked for h2c, serves HTTP/1.1 only.
@@ -171,6 +203,17 @@ impl Subject for MutantSubject {
                 apply_layers(app.router.into_service(), app.layers)
             };
             let svc = mutants::apply(self.0, svc);
+            if self.0.is_local() {
+                // The one adapter that runs local routes, with the one thing the mutant is about turned off.
+                return ActixAdapter
+                    .serve(
+                        svc,
+                        options(free_listener()?, setup)
+                            .limits(limits)
+                            .local_handlers(app.local),
+                    )
+                    .await;
+            }
             if self.0 == Mutant::AbortOnShutdown {
                 return mutants::serve_aborting(svc, free_listener()?);
             }

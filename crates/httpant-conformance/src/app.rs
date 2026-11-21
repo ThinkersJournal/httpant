@@ -268,6 +268,7 @@ pub fn app_with_gates() -> (App, Gates) {
         App {
             router,
             layers: vec![block, header],
+            local: httpant_server::LocalHandlers::new(),
         },
         gates,
     )

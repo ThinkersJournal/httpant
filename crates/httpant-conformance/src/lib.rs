@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! HTTPAnt adapter conformance suite (design `docs/HTTPANT-DESIGN.md`, section 6).
 //!
-//! - [`CASES`]: twenty-three cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
+//! - [`CASES`]: twenty-four cases, each run over a **real socket** against a [`Subject`] (an adapter), speaking through [`raw`], the suite's own
 //!   minimal HTTP/1.1 client. The client is deliberately not HTTPAnt, hyper or any adapter, so a defect cannot hide on both ends of a test.
 //! - Every case lists the known-bad [`Mutant`]s it must fail on. [`check_case`] demands both halves: the reference passes **and** every mutant
 //!   fails. A case that passes on its mutant is itself a failing test.
@@ -16,6 +16,7 @@ mod client_suite;
 mod consts;
 mod h2_case;
 mod live;
+mod local_case;
 mod mutants;
 pub mod raw;
 mod subject;
@@ -60,7 +61,7 @@ impl std::fmt::Debug for Case {
 }
 
 /// The sixteen cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
-pub const CASES: [Case; 23] = [
+pub const CASES: [Case; 24] = [
     Case {
         number: 1,
         id: "method-fidelity",
@@ -235,6 +236,19 @@ pub const CASES: [Case; 23] = [
         mutants: &[Mutant::NoHeaderReadTimeout],
         run: cases::header_read_timeout,
     },
+    Case {
+        number: 24,
+        id: "local-handlers",
+        requirement: "a handler that is not `Send` (`LocalHandlers::route`) runs only on an adapter that declares `local_handlers: Yes` (any other refuses to start with `LocalHandlersNotSupported`), and there it is inside everything HTTPAnt wraps around a route: a declared body over the limit is 413, a trusted proxy's forwarded headers are believed for it and nobody else's, the ACME challenge prefix is answered before it, the HTTPS redirect covers it, and the shutdown grace ends it",
+        mutants: &[
+            Mutant::LocalNoBodyLimit,
+            Mutant::LocalIgnoresProxies,
+            Mutant::LocalNoChallenge,
+            Mutant::LocalNoRedirect,
+            Mutant::LocalNoGrace,
+        ],
+        run: local_case::local_handlers,
+    },
 ];
 
 /// Run every case against `subject`: `(case number, result)` for each.
@@ -320,6 +334,11 @@ mod tests {
             Mutant::ForceConnectionClose,
             Mutant::SerialiseRequests,
             Mutant::HeadStripsHeaders,
+            Mutant::LocalNoBodyLimit,
+            Mutant::LocalIgnoresProxies,
+            Mutant::LocalNoChallenge,
+            Mutant::LocalNoRedirect,
+            Mutant::LocalNoGrace,
         ];
         for m in all {
             let users = CASES.iter().filter(|c| c.mutants.contains(&m)).count();
@@ -402,6 +421,7 @@ mod tests {
     case_test!(case_21_body_read_timeout, 20);
     case_test!(case_22_connection_limit, 21);
     case_test!(case_23_header_read_timeout, 22);
+    case_test!(case_24_local_handlers, 23);
 
     #[test]
     fn client_cases_are_numbered_in_order_and_each_mutant_is_used_once() {

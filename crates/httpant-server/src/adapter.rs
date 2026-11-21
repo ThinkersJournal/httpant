@@ -28,6 +28,8 @@ pub struct ServeOptions {
     /// Serve cleartext HTTP/2 by prior knowledge (h2c) on `listener`; off by default, see [`ServeOptions::h2c`]. Ignored on a TLS listener, where
     /// HTTP/2 is chosen by ALPN.
     pub h2c: bool,
+    /// The routes whose handlers are not `Send`; an adapter that runs them installs them on each worker thread, see [`LocalHandlers`](crate::LocalHandlers).
+    pub local_handlers: crate::LocalHandlers,
     /// Terminate TLS on `listener` with this acceptor (feature `tls`). Adapters whose [`Capabilities::tls`] is not `Yes` are refused before they start.
     #[cfg(feature = "tls")]
     pub tls: Option<crate::TlsAcceptor>,
@@ -44,6 +46,7 @@ impl ServeOptions {
             challenge: None,
             https_redirect: None,
             h2c: false,
+            local_handlers: crate::LocalHandlers::new(),
             #[cfg(feature = "tls")]
             tls: None,
             grace: Grace::new(Some(DEFAULT_SHUTDOWN_GRACE)),
@@ -55,6 +58,13 @@ impl ServeOptions {
     /// [`Capabilities::h2c`](httpant_core::Capabilities)). Needs the `http2` feature.
     pub fn h2c(mut self, on: bool) -> Self {
         self.h2c = on;
+        self
+    }
+
+    /// The routes whose handlers are not `Send`, see [`LocalHandlers`](crate::LocalHandlers). Only an adapter whose
+    /// [`Capabilities::local_handlers`](httpant_core::Capabilities) is `Yes` may be given any (`Server` checks, with [`require_local_handlers`](crate::require_local_handlers)).
+    pub fn local_handlers(mut self, local: crate::LocalHandlers) -> Self {
+        self.local_handlers = local;
         self
     }
 

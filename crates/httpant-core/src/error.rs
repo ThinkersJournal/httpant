@@ -101,6 +101,14 @@ pub enum Error {
         /// The adapter id.
         adapter: &'static str,
     },
+    /// A handler that is not `Send` was registered (`Server::local_route`) on an adapter that cannot run one; the server does not start.
+    #[error(
+        "the `{adapter}` adapter cannot run handlers that are not `Send`: use the actix-web adapter, or write the handler to be `Send` (an `Arc` where it holds an `Rc`)"
+    )]
+    LocalHandlersNotSupported {
+        /// The adapter id.
+        adapter: &'static str,
+    },
     /// A client request for a scheme that exists but whose cargo feature is off.
     #[error("scheme `{scheme}` is not compiled in: enable the `{feature}` feature")]
     SchemeNotCompiledIn {
@@ -166,6 +174,7 @@ impl Error {
             | Error::SchemeNotCompiledIn { .. }
             | Error::TlsNotSupported { .. }
             | Error::H2cNotSupported { .. }
+            | Error::LocalHandlersNotSupported { .. }
             | Error::ConnectionLimitTooHigh { .. }
             | Error::Tls(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::Timeout(_) | Error::ConnectTimeout(_) | Error::ReadTimeout(_) => {
