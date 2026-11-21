@@ -168,6 +168,7 @@ mod tests {
                 available: vec!["hyper"],
             },
             Error::H2cNotSupported { adapter: "x" },
+            Error::LocalHandlersNotSupported { adapter: "x" },
             Error::ConnectionLimitTooHigh {
                 wanted: 1,
                 needed: 2,

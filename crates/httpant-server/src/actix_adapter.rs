@@ -39,8 +39,8 @@ impl ServerAdapter for ActixAdapter {
         c.streaming_request_bodies = Support::Yes;
         c.streaming_response_bodies = Support::Yes;
         c.graceful_shutdown = Support::Yes;
-        // Handlers are `Send` futures; a handler written against actix's `!Send` types is the later `LocalHandler` capability.
-        c.local_handlers = Support::No;
+        // `Server::local_route`: the handler instance lives on each worker thread (`local.rs`); conformance case 24.
+        c.local_handlers = Support::Yes;
         // HTTPAnt's own acceptor runs the handshake and hands the finished stream to `actix_http::HttpService` (`actix_tls.rs`); proved by case 17.
         c.tls = if cfg!(feature = "tls") {
             Support::Yes
@@ -72,6 +72,7 @@ impl ServerAdapter for ActixAdapter {
             #[cfg(not(feature = "tls"))]
             opts.connection_gate()?;
             let max_connections = opts.limits.max_connections;
+            let local = opts.local_handlers.clone();
             let header_timeout = opts.limits.header_read_timeout;
             #[cfg(feature = "tls")]
             if let Some(tls) = opts.tls.clone() {
@@ -82,6 +83,7 @@ impl ServerAdapter for ActixAdapter {
                     grace,
                     gate,
                     header_timeout,
+                    local,
                 )
                 .await;
             }
@@ -94,6 +96,8 @@ impl ServerAdapter for ActixAdapter {
                 .spawn(move || {
                     actix_web::rt::System::new().block_on(async move {
                         let built = HttpServer::new(move || {
+                            // Runs on each worker thread: this worker's own instances of the local handlers.
+                            local.install();
                             let svc = svc.clone();
                             App::new().default_service(web::to(
                                 move |req: HttpRequest, payload: web::Payload| {

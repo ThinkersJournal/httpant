@@ -71,3 +71,14 @@ actix. If a consumer needs actix-native state, the smaller route is to run HTTPA
 (an actix adapter for embedding, the reverse direction), which keeps the wrappers where they are. Estimated size of the in-adapter route:
 a generic router or a second one, `!Send` re-implementations of five wrappers, per-worker factories on two serve paths, and a conformance case with
 mutants for each wrapper on local routes: a PR the size of the TLS adapter work, for a feature with no named user.
+
+### Built 2026-11-21 (ROADMAP row 9, CireSnave and pm-ants took the row)
+
+The recommendation above stands for the shape it costed: the five wrappers were **not** rewritten. A local route is not a second service. The
+router keeps a `Send` shim per local route (`crates/httpant-server/src/local.rs`); it runs on the actix worker's own thread (actix polls the whole
+request there, wrappers included), finds that worker's instance of the handler in a thread-local, and runs its future with `spawn_local`,
+returning the `Send` response through a oneshot. The router, `405`/`Allow`, the body limits, the shutdown grace, the ACME prefix, `Origin` and the
+HTTPS redirect therefore apply to local routes because they are the same ones. Per-worker factories are installed when each worker starts
+(two on the cleartext listener, the one thread of the TLS listener). A request abandoned mid-flight aborts the local task. The cost the notes
+counted as "a PR the size of the TLS adapter work" was the wrappers, which this avoids; what remains is the shim, the capability, the error and
+conformance case 24 with a mutant per wrapper. `Request` is the only argument (no extractors yet).
