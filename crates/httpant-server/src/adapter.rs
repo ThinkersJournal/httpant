@@ -30,6 +30,7 @@ pub struct ServeOptions {
     pub h2c: bool,
     /// The routes whose handlers are not `Send`; an adapter that runs them installs them on each worker thread, see [`LocalHandlers`](crate::LocalHandlers).
     pub local_handlers: crate::LocalHandlers,
+    pass_interim: bool,
     /// Terminate TLS on `listener` with this acceptor (feature `tls`). Adapters whose [`Capabilities::tls`] is not `Yes` are refused before they start.
     #[cfg(feature = "tls")]
     pub tls: Option<crate::TlsAcceptor>,
@@ -47,6 +48,7 @@ impl ServeOptions {
             https_redirect: None,
             h2c: false,
             local_handlers: crate::LocalHandlers::new(),
+            pass_interim: false,
             #[cfg(feature = "tls")]
             tls: None,
             grace: Grace::new(Some(DEFAULT_SHUTDOWN_GRACE)),
@@ -65,6 +67,14 @@ impl ServeOptions {
     /// [`Capabilities::local_handlers`](httpant_core::Capabilities) is `Yes` may be given any (`Server` checks, with [`require_local_handlers`](crate::require_local_handlers)).
     pub fn local_handlers(mut self, local: crate::LocalHandlers) -> Self {
         self.local_handlers = local;
+        self
+    }
+
+    /// Do not turn a handler's `1xx` status into `500`. For the conformance suite's mutant only: with this on, adapters disagree about what
+    /// a `1xx` answer does (ROADMAP row 20).
+    #[doc(hidden)]
+    pub fn pass_interim_statuses(mut self) -> Self {
+        self.pass_interim = true;
         self
     }
 
@@ -133,7 +143,10 @@ impl ServeOptions {
                     self.challenge.clone(),
                     crate::edge::wrap(
                         self.trusted_proxies.clone(),
-                        crate::redirect::wrap(self.https_redirect.clone(), svc),
+                        crate::redirect::wrap(
+                            self.https_redirect.clone(),
+                            crate::interim::wrap(self.pass_interim, svc),
+                        ),
                     ),
                 )),
             ),

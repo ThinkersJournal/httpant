@@ -92,6 +92,8 @@ pub enum Mutant {
     LocalNoRedirect,
     /// Local routes whose shutdown waits for ever.
     LocalNoGrace,
+    /// A handler's `1xx` status is passed to the web library as given, not turned into `500`.
+    PassInterimStatuses,
 }
 
 impl Mutant {
@@ -171,6 +173,7 @@ impl Mutant {
             Mutant::LocalNoChallenge => "local-no-challenge",
             Mutant::LocalNoRedirect => "local-no-redirect",
             Mutant::LocalNoGrace => "local-no-grace",
+            Mutant::PassInterimStatuses => "pass-interim-statuses",
         }
     }
 }
@@ -199,6 +202,7 @@ pub fn apply(mutant: Mutant, svc: BoxService) -> BoxService {
         | Mutant::LocalNoChallenge
         | Mutant::LocalNoRedirect
         | Mutant::LocalNoGrace
+        | Mutant::PassInterimStatuses
         | Mutant::ServeTlsInClear
         | Mutant::OffersH2WithoutServingIt
         | Mutant::H2cOnByDefault

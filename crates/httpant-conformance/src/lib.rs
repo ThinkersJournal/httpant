@@ -15,6 +15,7 @@ mod cases;
 mod client_suite;
 mod consts;
 mod h2_case;
+mod interim_case;
 mod live;
 mod local_case;
 mod mutants;
@@ -61,7 +62,7 @@ impl std::fmt::Debug for Case {
 }
 
 /// The sixteen cases. 1-7 are the old `web-server-abstraction` defects restated as tests (survey, "conformance suite's first failing cases").
-pub const CASES: [Case; 24] = [
+pub const CASES: [Case; 25] = [
     Case {
         number: 1,
         id: "method-fidelity",
@@ -249,6 +250,13 @@ pub const CASES: [Case; 24] = [
         ],
         run: local_case::local_handlers,
     },
+    Case {
+        number: 25,
+        id: "interim-statuses",
+        requirement: "a handler that returns a `1xx` status (100, 101, 102, 103, 199) is answered `500` with no body on every adapter, never the `1xx` (an interim status is not a final answer, and HTTPAnt has no way to send a real interim response); final statuses beside it (200, 204, 404, 599) arrive as sent",
+        mutants: &[Mutant::PassInterimStatuses],
+        run: interim_case::interim_statuses,
+    },
 ];
 
 /// Run every case against `subject`: `(case number, result)` for each.
@@ -339,6 +347,7 @@ mod tests {
             Mutant::LocalNoChallenge,
             Mutant::LocalNoRedirect,
             Mutant::LocalNoGrace,
+            Mutant::PassInterimStatuses,
         ];
         for m in all {
             let users = CASES.iter().filter(|c| c.mutants.contains(&m)).count();
@@ -422,6 +431,20 @@ mod tests {
     case_test!(case_22_connection_limit, 21);
     case_test!(case_23_header_read_timeout, 22);
     case_test!(case_24_local_handlers, 23);
+    case_test!(case_25_interim_statuses, 24);
+
+    /// The pass-through mutant must fail case 25 because a handler's 1xx reached the library (and, on the reference, the client) as given.
+    #[tokio::test]
+    async fn the_case_25_mutant_fails_because_a_1xx_got_through() {
+        let e = CASES[24]
+            .run(&MutantSubject(Mutant::PassInterimStatuses))
+            .await
+            .unwrap_err();
+        assert!(
+            e.contains("a handler's 101 reached the client as 101"),
+            "{e}"
+        );
+    }
 
     #[test]
     fn client_cases_are_numbered_in_order_and_each_mutant_is_used_once() {

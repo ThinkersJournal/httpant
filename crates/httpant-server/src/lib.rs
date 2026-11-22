@@ -16,6 +16,7 @@ mod edge;
 mod grace;
 mod hyper_adapter;
 mod idle;
+mod interim;
 mod limits;
 mod local;
 #[cfg(feature = "poem")]
