@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-11-21
+
+Documentation only. ROADMAP row 9 (`Server::local_route`, #91) is marked done; row 12 records a third flake-hunt capture at `cbd8e47` (the whole-suite test pinned to 4 cores with 4 busy loops on them, 20 runs, 20 passed, 0 failed); new row 20 lists the 1xx statuses row 18 did not run and the local-handler extractors. No code changed.
+
 ## [0.8.0] - 2026-11-21
 
 `Server::local_route(method, path, factory)` (and `LocalHandlers::route`, `ServeOptions::local_handlers`) registers a handler whose future need not be `Send` and whose state may be an `Rc` or `RefCell`: `factory` runs once on every actix worker thread (two on the cleartext listener, one on the TLS listener) and returns an async function of the `Request`. The actix-web adapter now declares `local_handlers: Yes`; every other adapter refuses a server that has a local route with the new `Error::LocalHandlersNotSupported` before it starts (`require_local_handlers`), and never runs the handler elsewhere.
