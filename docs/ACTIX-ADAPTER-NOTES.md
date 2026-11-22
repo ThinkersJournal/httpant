@@ -81,4 +81,4 @@ returning the `Send` response through a oneshot. The router, `405`/`Allow`, the 
 HTTPS redirect therefore apply to local routes because they are the same ones. Per-worker factories are installed when each worker starts
 (two on the cleartext listener, the one thread of the TLS listener). A request abandoned mid-flight aborts the local task. The cost the notes
 counted as "a PR the size of the TLS adapter work" was the wrappers, which this avoids; what remains is the shim, the capability, the error and
-conformance case 24 with a mutant per wrapper. `Request` is the only argument (no extractors yet).
+conformance case 24 with a mutant per wrapper. A local handler takes nothing, the `Request`, or up to four extractors (`Path`, `Query`, `PathParams`, your own `FromRequest`) through the `LocalHandler` trait, the counterpart of `Handler` without `Send` (ROADMAP row 22; tested in `crates/httpant-server/tests/extractors.rs`).

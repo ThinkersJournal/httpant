@@ -57,7 +57,7 @@ use httpant_core::http::Method;
 use httpant_core::{BoxService, Error, Handler, LayerFn, Result, Router, apply_layers, layer_fn};
 pub use hyper_adapter::HyperAdapter;
 pub use limits::Limits;
-pub use local::LocalHandlers;
+pub use local::{LocalHandler, LocalHandlers};
 #[cfg(feature = "poem")]
 pub use poem_adapter::PoemAdapter;
 pub use redirect::HttpsRedirect;
@@ -293,21 +293,19 @@ impl Server {
         self
     }
 
-    /// Add a route whose handler is not `Send`: `factory` runs once on every worker thread and returns an async function of the
-    /// [`Request`](httpant_core::Request) whose future may hold `Rc`, `RefCell` and the like, and whose state is the worker's own. Only an adapter
+    /// Add a route whose handler is not `Send`: `factory` runs once on every worker thread and returns an async function (see
+    /// [`LocalHandler`]: nothing, the [`Request`](httpant_core::Request) or up to four extractors such as `Path` and `Query`) whose future may hold `Rc`, `RefCell` and the like, and whose state is the worker's own. Only an adapter
     /// that declares [`Capabilities::local_handlers`](httpant_core::Capabilities) (actix-web) runs it; any other makes `serve`/`bind` fail with
     /// [`Error::LocalHandlersNotSupported`], and it never runs the handler somewhere else. A local route is routed like any other (one `404`, one
     /// `405` with `Allow`) and is inside every limit, the shutdown grace, the ACME prefix, the [`Origin`] and the HTTPS redirect.
-    pub fn local_route<H, Fut, R>(
+    pub fn local_route<H, M>(
         mut self,
         method: Method,
         path: &str,
         factory: impl Fn() -> H + Send + Sync + 'static,
     ) -> Self
     where
-        H: Fn(httpant_core::Request) -> Fut + 'static,
-        Fut: std::future::Future<Output = R> + 'static,
-        R: httpant_core::IntoResponse + 'static,
+        H: LocalHandler<M>,
     {
         self.router = self.local.route(self.router, method, path, factory);
         self
