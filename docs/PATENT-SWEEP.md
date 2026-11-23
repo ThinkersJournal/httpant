@@ -154,6 +154,48 @@ US10110642 (Canon, the sibling of H15; same family of idea, not read), US5958052
 
 No patent surfaced for: server-side detection of the cleartext HTTP/2 preface; `acme-tls/1` validation in a TLS handshake; the `421` host allow-list redirect; a listener reading back its own served certificate; a check of the connected peer address before TLS. **An absence of search hits is weak evidence.** Twelve queries through a general web search limited to two patent sites, each returning about ten pages, cannot show absence; they show only that nothing close came back.
 
+
+## Re-sweep 2026-11-22 (at cbd8e47 = 0.8.0): `Server::local_route`, client slice 3, limits and timeouts
+
+**Why now.** Row 11 of the ROADMAP says to re-sweep when a new family of capability ships. Since the 0.5.22 re-sweep: the client's OS root store (0.7.3), CONNECT proxy (0.7.4) and opt-in redirects (0.7.5); the connection limit, header-read and body-read timeouts and the bounded body drain (rows 16 and 17); and `Server::local_route` (0.8.0, row 9). Run by: HTTPAnt lane, Claude Sonnet 5.5, one session, no subagents. **NOT legal advice; NOT a freedom-to-operate opinion.** Verdict words: `outside as read` (the claims were read and an element is missing, named) or `not read`; never `clear`.
+
+### Ideas swept in this pass (continuing the numbering above)
+
+16. A non-`Send` handler run on the worker thread that owns it, reached through a `Send` shim the router holds, so routing and every wrapper apply unchanged (`Server::local_route`).
+17. An HTTP client choosing between bundled trust anchors and the operating system's store, bundled by default.
+18. A client's connect-through-a-proxy (CONNECT) combined with a private-address guard that, by default, refuses the combination unless the caller says the guard judges the proxy.
+19. Redirects not followed unless asked, bounded when asked.
+20. Server limits on connections, header-read time and body-read time, defaults on and `0` = off; an early answer that ends the connection rather than reading the rest of a body, with a bounded drain.
+
+### Queries (source, query, date)
+
+All 2026-11-22. Source for every query: the lane's general web search (standard mode) limited to `patents.google.com` and `patents.justia.com`; USPTO PDF pages and others appeared incidentally. Espacenet, PatentScope and the offices' own interfaces were not searched. Six queries.
+
+| # | idea | query |
+|---|---|---|
+| D1 | 16 | patent non-thread-safe request handler executed on dedicated worker thread local task set proxy shim so routing and middleware unchanged web server |
+| D2 | 17 | patent HTTP client use operating system certificate store or bundled trust anchors selectable root store verify server certificate |
+| D3 | 18 | patent HTTP CONNECT tunnel through proxy client private address check applies to proxy or to target server request forgery |
+| D4 | 19 | patent HTTP client follow redirects disabled by default opt-in strip authorization header on cross-origin redirect limit hops |
+| D5 | 20 | patent web server limit maximum concurrent connections header read timeout slow client slowloris body read timeout drop connection |
+| D6 | 20 | patent server answers early then closes connection instead of reading remaining request body bounded drain limit |
+
+### Hits read (claim 1 in full with `tools/patent-claims.py`; dependent claims not read)
+
+| # | patent | title | assignee | status (Google Patents') | claims read | overlap | our difference | verdict |
+|---|---|---|---|---|---|---|---|---|
+| H22 | US7707240B2 | Proxy for application server | Cisco | Active (est. 2028) | 1 | Several threads and queues around a proxied connection | Claim 1 is proxying SCCP (a telephony protocol) with four named threads, a message classification and script events for application-server applications; `local_route` runs an HTTP handler on the worker thread's `LocalSet` | outside as read |
+| H23 | US10708256B1 | Identification of trusted certificates | Amazon | Active | 1 | A client with a trust store used by other applications | Claim 1 applies an application-specific rule (by chain-of-trust length) to refuse a certificate the shared store trusts; the HTTPAnt client picks one store (bundled or OS) and applies no per-application rule | outside as read |
+| H24 | WO2013032775A1 | Mitigating slow http attacks using rate and time monitoring | Arbor Networks | Ceased | 1 | Header time above a maximum, minimum bit rate | A device at the edge of a protected network sending reset packets to protected devices; HTTPAnt's timeouts are inside the server process and send no resets | outside as read |
+
+### Seen in the results, not read
+
+US20130145158A1 (a custom policy store overriding OS or browser roots), US7143165 and US6816900 (a root store inside a browser or the OS), US20190068580A1, US7039691B1 (Java VM as a web server, one request at a time), US7051330B1 (a thread per request), US20110131635A1 (client-side CSRF defence removing credentials on a third-party redirect), US7370351B1 and US20070289006A1 (proxies following redirects), EP3507964 and US20230020721A1 (a proxy resolving a CONNECT hostname), US20110258703A1, US8800039B2 and US20130042322A1 (slow-DDoS detection), US20110320617A1, US7398317B2, US6823515B2 (unread data on a connection), US20050021771A1 (read in the first sweep, H7). Listed so a reader can see what came back; none was read, so none has a verdict.
+
+### What this pass did not find, and what that is worth
+
+No result addressed a shim that lets a non-`Send` HTTP handler sit behind a shared router, a CONNECT-versus-guard refusal, or a bounded drain after an early answer. Six queries through a general web search that returns about ten pages each cannot show absence; they show only that nothing close came back. **Not run:** any classification-code search (for example CPC H04L 63, H04L 67, G06F 9/50), Espacenet, PatentScope, a person with the offices' own tools; claims of the unread patents above. The PM can accept this as an honest thin record or ask for a person with those tools.
+
 ## Limitations
 
-AI-assisted due-diligence read; not legal advice; not a freedom-to-operate opinion. Ten queries through a general web search that returns a handful of Google Patents and Justia pages each, so coverage of the patent literature is thin and an absence of hits is weak evidence. Seven patents had their claims read; the machine-converted claim text should be checked against the official record before any quote is relied on. Status and expiry are Google Patents' estimates. The first two passes describe the code at `2d8a670`/`340e667`; the re-sweep section above covers HTTP/2, the ACME handlers, client https and the private-address guard at `6d564a0` with twelve more queries and nine more patents read. Still outside every pass: adapters for libraries other than the six in tree, client slice 3 (OS root store, proxy, opt-in redirects, not built), and any classification-code search or search by a person with the patent offices' own tools.
+AI-assisted due-diligence read; not legal advice; not a freedom-to-operate opinion. Ten queries through a general web search that returns a handful of Google Patents and Justia pages each, so coverage of the patent literature is thin and an absence of hits is weak evidence. Seven patents had their claims read; the machine-converted claim text should be checked against the official record before any quote is relied on. Status and expiry are Google Patents' estimates. The first two passes describe the code at `2d8a670`/`340e667`; the re-sweep section above covers HTTP/2, the ACME handlers, client https and the private-address guard at `6d564a0` with twelve more queries and nine more patents read. The 2026-11-22 re-sweep (six queries, three patents read) covers `local_route`, client slice 3 and the limits and timeouts at `cbd8e47`. Still outside every pass: adapters for libraries other than the six in tree, and any classification-code search or search by a person with the patent offices' own tools.

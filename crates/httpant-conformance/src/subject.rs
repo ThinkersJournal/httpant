@@ -60,6 +60,8 @@ pub struct Setup {
     pub challenge: Option<Arc<dyn httpant_server::ChallengeResponder>>,
     /// Redirects cleartext requests for these hosts to HTTPS (case 24); none by default.
     pub https_redirect: Option<httpant_server::HttpsRedirect>,
+    /// Do not turn a handler's `1xx` into `500` (case 25's mutant only).
+    pub pass_interim: bool,
 }
 
 impl Default for Setup {
@@ -72,6 +74,7 @@ impl Default for Setup {
             limits: httpant_server::Limits::default(),
             challenge: None,
             https_redirect: None,
+            pass_interim: false,
         }
     }
 }
@@ -88,6 +91,11 @@ fn options(listener: std::net::TcpListener, setup: Setup) -> ServeOptions {
     let opts = match setup.https_redirect {
         Some(redirect) => opts.redirect_to_https(redirect),
         None => opts,
+    };
+    let opts = if setup.pass_interim {
+        opts.pass_interim_statuses()
+    } else {
+        opts
     };
     let opts = match setup.tls {
         Some(tls) => opts.tls(tls),
@@ -188,6 +196,8 @@ impl Subject for MutantSubject {
             Mutant::LocalNoChallenge => setup.challenge = None,
             Mutant::LocalNoRedirect => setup.https_redirect = None,
             Mutant::LocalNoGrace => setup.grace = None,
+            // A handler's 1xx is passed to the library as the handler gave it.
+            Mutant::PassInterimStatuses => setup.pass_interim = true,
             // Accepts the HTTP/2 preface whether or not it was asked to.
             Mutant::H2cOnByDefault => setup.h2c = true,
             // Asked for h2c, serves HTTP/1.1 only.
