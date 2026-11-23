@@ -1,5 +1,0 @@
-kind: **BREAKING**: a handler's 1xx status is answered 500 on every adapter
----
-A handler that returns a `1xx` status (`100`, `101`, `102`, `103`, any other) now gets `500 Internal Server Error` with no body on all six adapters, and one line on stderr the first time it happens in a process. Before, five adapters already answered `500` for every `1xx` except `101`, actix-web sent the `1xx` itself as the final answer (a client reads a bare `100 Continue` as interim and waits for the real answer), and all six wrote `101 Switching Protocols` although nothing had been upgraded (measured at `cbd8e47`, a raw-socket probe, `47aeafc` in the history). An interim status is not a final answer and HTTPAnt has no way to send a real interim response, so nothing legitimate is refused; final statuses are untouched. Conformance case 25 (25 server cases now) runs it on every adapter with the pass-through mutant `pass-interim-statuses`; the README case count is updated. PM ruling: pm-ants 2026-11-22.
-
-LICENSE-APACHE is now byte-identical to the canonical Apache-2.0 text (sha256 `cfc7749b`, 11358 bytes); it was 7 bytes over.

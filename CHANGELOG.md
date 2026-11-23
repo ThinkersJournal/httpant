@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-11-22
+
+A handler that returns a `1xx` status (`100`, `101`, `102`, `103`, any other) now gets `500 Internal Server Error` with no body on all six adapters, and one line on stderr the first time it happens in a process. Before, five adapters already answered `500` for every `1xx` except `101`, actix-web sent the `1xx` itself as the final answer (a client reads a bare `100 Continue` as interim and waits for the real answer), and all six wrote `101 Switching Protocols` although nothing had been upgraded (measured at `cbd8e47`, a raw-socket probe, `47aeafc` in the history). An interim status is not a final answer and HTTPAnt has no way to send a real interim response, so nothing legitimate is refused; final statuses are untouched. Conformance case 25 (25 server cases now) runs it on every adapter with the pass-through mutant `pass-interim-statuses`; the README case count is updated. PM ruling: pm-ants 2026-11-22.
+
+LICENSE-APACHE is now byte-identical to the canonical Apache-2.0 text (sha256 `cfc7749b`, 11358 bytes); it was 7 bytes over.
+
 ## [0.8.1] - 2026-11-21
 
 Documentation only. ROADMAP row 9 (`Server::local_route`, #91) is marked done; row 12 records a third flake-hunt capture at `cbd8e47` (the whole-suite test pinned to 4 cores with 4 busy loops on them, 20 runs, 20 passed, 0 failed); new row 20 lists the 1xx statuses row 18 did not run and the local-handler extractors. No code changed.
