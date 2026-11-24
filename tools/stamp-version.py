@@ -17,6 +17,18 @@ script, which
 An optional `tools/stamp-current.txt` (one line: a Cargo.toml path) names the manifest whose version is "current" when the
 repo has crates on independent versions; only crates at that version are stamped.
 
+NPM (Humboldt and Thinker's Journal Community, 2026-11-12): every tracked `package.json` whose top-level `version` equals the
+current one is set to the new one, with the `version` and `packages[""].version` of the `package-lock.json` beside it; each edit
+is checked by parsing the result and comparing it with the original plus exactly those keys. With no tracked Cargo.toml the
+Cargo steps are skipped, and `tools/stamp-current.txt` may name a `package.json`. pnpm's lockfile records no workspace
+package's own version, so a pnpm repo has nothing else to edit.
+
+AMEND (CireSnave 2026-11-23, one version per project per day): when `<version>` EQUALS the current one and that version is not
+published, the new fragments are merged into the end of that version's newest CHANGELOG entry and removed; no crate file changes.
+Published means a `v<version>` git tag (local or on origin) or the version on crates.io for a crate at that version; any source
+that cannot answer counts as published. A published version exits 3 and the caller takes the next number. `--published yes|no`
+forces the answer. A BREAKING fragment is refused (it needs a new number).
+
 Extra files that pin the version as `=X.Y.Z` (README install lines) are listed one path per line in
 `tools/stamp-extra.txt` (optional); a line `path ~ REGEX` stamps a present-tense statement (REGEX has `{old}` and ONE group
 kept before the version). Standard library only. Line endings of each file are kept. Files are enumerated with
@@ -24,11 +36,14 @@ kept before the version). Standard library only. Line endings of each file are k
 """
 import argparse
 import datetime
+import json
 import os
 import re
 import shutil
 import subprocess  # nosec B404 - runs `git ls-files` with fixed arguments in a developer or CI checkout
 import sys
+import urllib.error
+import urllib.request
 
 EM = "—"
 NAME_RX = re.compile(r'(?m)^\s*name\s*=\s*"([^"]+)"')
@@ -92,6 +107,8 @@ def pinned_version(root):
         return None
     rel = read(pin)[0].strip().splitlines()[0].strip()
     text, _ = read(os.path.join(root, rel))
+    if rel.endswith("package.json"):  # an npm-only repo: the root package.json carries the project's version
+        return json_version(text) or die(f"tools/stamp-current.txt names {rel}, which has no version")
     v = literal(package_version(text)) or workspace_version(text)
     return v or die(f"tools/stamp-current.txt names {rel}, which has no literal version")
 
@@ -144,7 +161,8 @@ def stamp_manifest(t, old, new, ws_old):
 
 def manifest_changes(root, old, new):
     out, names = [], []
-    ws_old = workspace_version(read(os.path.join(root, "Cargo.toml"))[0]) == old
+    root_cargo = os.path.join(root, "Cargo.toml")
+    ws_old = os.path.exists(root_cargo) and workspace_version(read(root_cargo)[0]) == old
     for rel in tracked(root, "*Cargo.toml"):
         p = os.path.join(root, rel)
         t, crlf = read(p)
@@ -199,9 +217,91 @@ def extra_changes(root, old, new):
     return [extra_change(root, line, re.escape(old), new) for line in lines if line and not line.startswith("#")]
 
 
+def json_version(text):
+    v = json.loads(text).get("version")
+    return v if isinstance(v, str) else None
+
+
+def anchor_end(text, anchor, pos):
+    """Where to start looking for the next version key: after `anchor` (a regex), or `pos` when there is none."""
+    if not anchor:
+        return pos
+    m = re.compile(anchor).search(text, pos)
+    return m.end() if m else die(f"no anchor {anchor!r} in the file")
+
+
+def edit_version_keys(text, old, new, anchors):
+    """Set `"version": "old"` to `new` at the first match after each anchor. The caller checks the result by parsing it."""
+    pos = 0
+    for anchor in anchors:
+        pos = anchor_end(text, anchor, pos)
+        m = re.compile(r'("version"\s*:\s*")' + re.escape(old) + '"').search(text, pos)
+        if not m:
+            die(f'no "version": "{old}" after {anchor!r}')
+        text = text[: m.start()] + m.group(1) + new + '"' + text[m.end():]
+        pos = m.start() + len(m.group(0))
+    return text
+
+
+def has_root_package(data):
+    return isinstance(data.get("packages"), dict) and "" in data["packages"]
+
+
+def stamp_json(rel, text, old, new, lock):
+    """`text` with the version key(s) set, after checking that parsing the result gives the original plus exactly those keys."""
+    data = json.loads(text)
+    root_pkg = lock and has_root_package(data)
+    out = edit_version_keys(text, old, new, [None, r'"packages"\s*:\s*\{\s*"":\s*\{'] if root_pkg else [None])
+    data["version"] = new
+    if root_pkg:
+        data["packages"][""]["version"] = new
+    return out if json.loads(out) == data else die(f"{rel}: the edit changed more than the version key(s)")
+
+
+def package_json_change(root, rel, old, new):
+    """A tracked package.json whose top-level version is `old`, or None."""
+    p = os.path.join(root, rel)
+    t, crlf = read(p)
+    try:
+        v = json_version(t)
+    except (ValueError, AttributeError):
+        return None
+    return (p, stamp_json(rel, t, old, new, False), crlf) if v == old else None
+
+
+def package_lock_change(root, rel, old, new, locks):
+    """The package-lock.json beside `rel` (top-level and packages[""] version), or None when none is tracked."""
+    lock_rel = os.path.join(os.path.dirname(rel), "package-lock.json").replace("\\", "/")
+    if lock_rel not in locks:
+        return None
+    p = os.path.join(root, lock_rel)
+    t, crlf = read(p)
+    data = json.loads(t)
+    stale = data.get("version") != old or (has_root_package(data) and data["packages"][""].get("version") != old)
+    if stale:
+        die(f"{lock_rel} does not carry {old} where {rel} does (run `npm install --package-lock-only` first)")
+    return (p, stamp_json(lock_rel, t, old, new, True), crlf)
+
+
+def npm_changes(root, old, new):
+    """Every tracked package.json at the project's version, and the package-lock.json beside each."""
+    locks = set(tracked(root, "*package-lock.json"))
+    out = []
+    for rel in tracked(root, "*package.json"):
+        change = package_json_change(root, rel, old, new) if os.path.basename(rel) == "package.json" else None
+        if change is None:
+            continue
+        out.append(change)
+        lock = package_lock_change(root, rel, old, new, locks)
+        out += [lock] if lock else []
+    return out
+
+
 def version_changes(root, old, new):
-    out, names = manifest_changes(root, old, new)
-    out += lock_changes(root, names, old, new)
+    out = npm_changes(root, old, new)
+    if tracked(root, "*Cargo.toml"):  # an npm-only repo has no Cargo half
+        manifests, names = manifest_changes(root, old, new)
+        out += manifests + lock_changes(root, names, old, new)
     out += extra_changes(root, old, new)
     return out or die("nothing carries the old version")
 
@@ -239,7 +339,10 @@ def pick_kind(kinds):
 
 def newest_entry(root):
     p = os.path.join(root, "CHANGELOG.md")
-    t, crlf = read(p)
+    if os.path.exists(p):
+        t, crlf = read(p)
+    else:  # a repo with no changelog yet: start one with a baseline heading the stamp can insert above
+        t, crlf = "# Changelog\n\n## [0.0.0] - baseline created by the stamp kit\n\nNo earlier entries were written.\n", False
     m = re.search(r"(?m)^## (\[?)`?\d+\.\d+\.\d+", t)
     return (p, t, crlf, m) if m else die("CHANGELOG.md has no version heading to put the entry above")
 
@@ -255,19 +358,96 @@ def changelog_change(root, version, frags):
     return (p, t[: m.start()] + entry + rule + t[m.start():], crlf)
 
 
+ENTRY_RX = re.compile(r"(?m)^## \[?`?(\d+\.\d+\.\d+[^\]`\s]*)")
+EXIT_PUBLISHED = 3  # amend refused: the version is published, so the caller takes the next number
+
+
+def is_published(root, version, names, mode):
+    """True when `version` is out. `mode` yes/no forces the answer; auto asks git tags (local, then origin) and crates.io.
+
+    Fails closed: when a source cannot answer, the version counts as published (a new number that could have been an amend
+    is cheaper than an amend of a version that is already out).
+    """
+    if mode != "auto":
+        return mode == "yes"
+    git = shutil.which("git") or die("git is not on PATH")
+    local = subprocess.run([git, "-C", root, "tag", "-l", "v" + version], capture_output=True, text=True, check=False)  # nosec B603
+    if local.returncode != 0 or local.stdout.strip():
+        return True
+    remote = subprocess.run([git, "-C", root, "ls-remote", "--tags", "origin", "refs/tags/v" + version],
+                            capture_output=True, text=True, check=False)  # nosec B603
+    if remote.returncode != 0 or remote.stdout.strip():
+        return True
+    for nm in names:
+        req = urllib.request.Request(f"https://crates.io/api/v1/crates/{nm}/{version}", headers={"User-Agent": "stamp-version-kit"})
+        try:
+            with urllib.request.urlopen(req, timeout=15):  # nosec B310 - fixed https URL
+                return True
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                return True
+        except (urllib.error.URLError, OSError):
+            return True
+    return False
+
+
+def carrying_names(root, old):
+    """Names of the crates at `old` (the crates.io probe set); empty for a repo with no Cargo.toml."""
+    return manifest_changes(root, old, old + "-probe")[1] if tracked(root, "*Cargo.toml") else []
+
+
+def amend_change(root, version, frags):
+    """Merge the fragments into the newest CHANGELOG entry, which must be `version`'s. Returns (path, new text, crlf)."""
+    if not frags:
+        die("no changelog.d/*.md fragment: every pushed change needs a CHANGELOG entry")
+    parsed = [parse_fragment(f) for f in frags]
+    if any("breaking" in k.lower() for k, _ in parsed):
+        die("a BREAKING fragment needs a new version number, not an amend")
+    p, t, crlf, m = newest_entry(root)
+    found = ENTRY_RX.match(t, m.start())
+    if not found or found.group(1) != version:
+        die(f"the newest CHANGELOG entry is {found.group(1) if found else '?'}, not {version}: nothing to amend")
+    nxt = ENTRY_RX.search(t, m.end())
+    end = nxt.start() if nxt else len(t)
+    rule = re.search(r"(?m)^---\s*$", t[m.end():end])
+    if rule:
+        end = m.end() + rule.start()
+    body = t[:end].rstrip("\n") + "\n\n" + "\n\n".join(b for _, b in parsed) + "\n\n"
+    return p, body + t[end:], crlf
+
+
+def amend(root, version, frags, a):
+    """Equal, unpublished version: fold the new fragments into that version's entry; published: exit 3."""
+    if is_published(root, version, carrying_names(root, version), a.published):
+        print(f"stamp-version: {version} is published: take the next number", file=sys.stderr)
+        sys.exit(EXIT_PUBLISHED)
+    path, text, crlf = amend_change(root, version, frags)
+    print(("would amend " if a.dry_run else "amended ") + os.path.relpath(path, root).replace("\\", "/"))
+    if a.dry_run:
+        print(f"{version} unchanged; {len(frags)} fragment(s) would be merged")
+        return
+    write(path, text, crlf)
+    for f in frags:
+        os.remove(f)
+    print(f"amended {version}; removed {len(frags)} fragment(s)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("version")
     ap.add_argument("--root", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--published", choices=("auto", "yes", "no"), default="auto",
+                    help="an equal version amends its entry unless published: auto checks git tags and crates.io; yes/no force it")
     a = ap.parse_args()
     if not re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?", a.version):
         die(f"`{a.version}` is not MAJOR.MINOR.PATCH")
     root = os.path.abspath(a.root)
     old = current_version(root)
-    if old == a.version:
-        die(f"the crates already say {old}")
     frags = fragments(os.path.join(root, "changelog.d"))
+    if old == a.version:
+        amend(root, old, frags, a)
+        return
     changes = version_changes(root, old, a.version)
     changes.append(changelog_change(root, a.version, frags))
     for path, _, _ in changes:
