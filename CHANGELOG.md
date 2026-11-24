@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-11-23
+
+`Server::local_route` and `LocalHandlers::route` now accept, besides a function of the `Request`, a function of nothing or of one to four extractors (`Path`, `Query`, `PathParams`, or your own `FromRequest`), through the new `LocalHandler` trait: the counterpart of `Handler` for futures that are not `Send`. A failing extractor is answered instead and the handler does not run, as on any other route. Existing local routes compile unchanged (the generic parameters of the two methods changed from the handler and its future and response to the handler and a marker, so only a caller that named them with a turbofish is affected). Tested on actix-web against the same handler body on an ordinary route, and checked to fail with the refusal removed.
+
 ## [0.9.0] - 2026-11-22
 
 A handler that returns a `1xx` status (`100`, `101`, `102`, `103`, any other) now gets `500 Internal Server Error` with no body on all six adapters, and one line on stderr the first time it happens in a process. Before, five adapters already answered `500` for every `1xx` except `101`, actix-web sent the `1xx` itself as the final answer (a client reads a bare `100 Continue` as interim and waits for the real answer), and all six wrote `101 Switching Protocols` although nothing had been upgraded (measured at `cbd8e47`, a raw-socket probe, `47aeafc` in the history). An interim status is not a final answer and HTTPAnt has no way to send a real interim response, so nothing legitimate is refused; final statuses are untouched. Conformance case 25 (25 server cases now) runs it on every adapter with the pass-through mutant `pass-interim-statuses`; the README case count is updated. PM ruling: pm-ants 2026-11-22.

@@ -11,17 +11,87 @@
 use std::cell::RefCell;
 use std::fmt;
 use std::future::Future;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use httpant_core::http::{Method, StatusCode};
-use httpant_core::{IntoResponse, Request, Response, Router};
+use httpant_core::{FromRequest, IntoResponse, Request, Response, Router};
 use tokio::task::JoinHandle;
 
-type LocalFuture = Pin<Box<dyn Future<Output = Response>>>;
+/// The future of a local handler: not `Send`.
+pub type LocalFuture = Pin<Box<dyn Future<Output = Response>>>;
 type LocalFn = Rc<dyn Fn(Request) -> LocalFuture>;
 type Factory = Arc<dyn Fn() -> LocalFn + Send + Sync>;
+
+#[doc(hidden)]
+pub struct NoArgs;
+#[doc(hidden)]
+pub struct WithRequest;
+#[doc(hidden)]
+pub struct Extracted<T>(PhantomData<fn() -> T>);
+
+/// What [`LocalHandlers::route`] runs: the counterpart of [`Handler`](httpant_core::Handler) without `Send`. An async function (or closure) that
+/// takes nothing, the [`Request`], or from one to four extractors ([`Path`](httpant_core::Path), [`Query`](httpant_core::Query),
+/// [`PathParams`](httpant_core::PathParams) or your own [`FromRequest`]), built from the request before the handler runs; one that fails is
+/// answered instead and the handler does not run, exactly as for a handler that is `Send`. Its future need not be `Send`.
+pub trait LocalHandler<Marker>: 'static {
+    /// Run the handler.
+    fn call(&self, req: Request) -> LocalFuture;
+}
+
+impl<F, Fut, R> LocalHandler<NoArgs> for F
+where
+    F: Fn() -> Fut + 'static,
+    Fut: Future<Output = R> + 'static,
+    R: IntoResponse + 'static,
+{
+    fn call(&self, _req: Request) -> LocalFuture {
+        let fut = self();
+        Box::pin(async move { fut.await.into_response() })
+    }
+}
+
+impl<F, Fut, R> LocalHandler<WithRequest> for F
+where
+    F: Fn(Request) -> Fut + 'static,
+    Fut: Future<Output = R> + 'static,
+    R: IntoResponse + 'static,
+{
+    fn call(&self, req: Request) -> LocalFuture {
+        let fut = self(req);
+        Box::pin(async move { fut.await.into_response() })
+    }
+}
+
+macro_rules! local_extractors {
+    ($($t:ident),+) => {
+        #[allow(non_snake_case)]
+        impl<F, Fut, R, $($t),+> LocalHandler<Extracted<($($t,)+)>> for F
+        where
+            F: Fn($($t),+) -> Fut + 'static,
+            Fut: Future<Output = R> + 'static,
+            R: IntoResponse + 'static,
+            $($t: FromRequest),+
+        {
+            fn call(&self, req: Request) -> LocalFuture {
+                $(let $t = match $t::from_request(&req) {
+                    Ok(v) => v,
+                    Err(res) => return Box::pin(async move { *res }),
+                };)+
+                drop(req);
+                let fut = self($($t),+);
+                Box::pin(async move { fut.await.into_response() })
+            }
+        }
+    };
+}
+
+local_extractors!(T1);
+local_extractors!(T1, T2);
+local_extractors!(T1, T2, T3);
+local_extractors!(T1, T2, T3, T4);
 
 thread_local! {
     /// The handler instances of this worker thread, by route index; set by [`LocalHandlers::install`] when the worker starts.
@@ -58,10 +128,10 @@ impl LocalHandlers {
     }
 
     /// Add a local route to `router` and remember its factory. `factory` runs once per worker thread and returns the handler, an async function
-    /// of the [`Request`] whose future need not be `Send` and which may keep `Rc` and `RefCell` state. Serving these routes is refused with
+    /// (see [`LocalHandler`]: nothing, the [`Request`], or up to four extractors) whose future need not be `Send` and which may keep `Rc` and `RefCell` state. Serving these routes is refused with
     /// [`Error::LocalHandlersNotSupported`](httpant_core::Error) by an adapter whose
     /// [`Capabilities::local_handlers`](httpant_core::Capabilities) is not `Yes`.
-    pub fn route<H, Fut, R>(
+    pub fn route<H, M>(
         &mut self,
         router: Router,
         method: Method,
@@ -69,17 +139,12 @@ impl LocalHandlers {
         factory: impl Fn() -> H + Send + Sync + 'static,
     ) -> Router
     where
-        H: Fn(Request) -> Fut + 'static,
-        Fut: Future<Output = R> + 'static,
-        R: IntoResponse + 'static,
+        H: LocalHandler<M>,
     {
         let index = self.factories.len();
         self.factories.push(Arc::new(move || {
             let handler = factory();
-            let local: LocalFn = Rc::new(move |req| {
-                let fut = handler(req);
-                Box::pin(async move { fut.await.into_response() })
-            });
+            let local: LocalFn = Rc::new(move |req| handler.call(req));
             local
         }));
         router.route(method, path, move |req: Request| dispatch(index, req))
