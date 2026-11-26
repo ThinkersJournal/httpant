@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.2] - 2026-11-25
+
+The `portfolio` job now calls `ciresnave/coderipper/.github/workflows/portfolio.yml@467fd259` (CODERIPPER_VERSION 0.48.1) instead of `dc45e363`. One-line CI change, no code touched; verified by the advisory job at the new pin.
+
 ## [0.9.1] - 2026-11-23
 
 `Server::local_route` and `LocalHandlers::route` now accept, besides a function of the `Request`, a function of nothing or of one to four extractors (`Path`, `Query`, `PathParams`, or your own `FromRequest`), through the new `LocalHandler` trait: the counterpart of `Handler` for futures that are not `Send`. A failing extractor is answered instead and the handler does not run, as on any other route. Existing local routes compile unchanged (the generic parameters of the two methods changed from the handler and its future and response to the handler and a marker, so only a caller that named them with a turbofish is affected). Tested on actix-web against the same handler body on an ordinary route, and checked to fail with the refusal removed.
